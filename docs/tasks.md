@@ -1,0 +1,82 @@
+# Block 6 — Multi-Agent Clinical Cohort System — Tasks
+
+Checklist form of `docs/plan.md`. Each phase = its own branch + PR, per project convention. Phase 1 is this one (spec + plan + tasks, all on `phase-1-spec`).
+
+## Phase 1 — Spec, Plan, Tasks (branch: `phase-1-spec`)
+
+- [x] `docs/spec.md` committed
+- [x] `docs/plan.md` committed
+- [ ] `docs/tasks.md` committed (this file)
+- [ ] Re-verify Block 3/4/5's current interfaces against `docs/spec.md` §5 before moving to Phase 2 — the spec's audit is a point-in-time snapshot (2026-07-24); confirm `run_agent`'s signature, `ClinicalAnswer`'s fields, and Block 4's `/query` contract haven't changed since
+- [ ] **Check the one unverified number in plan.md §7:** what timeout does Block 5's `rag_tool.py` actually set on its own outbound HTTP call to Block 4's `/query` endpoint? The ~60s search-retry worst case assumes this doesn't cut in before Block 4's internal 20s/attempt ceiling — that client-side value was never directly read in any prior audit. If it differs, update §7's worst-case math and the 150s branch timeout it justifies, not just this one number in isolation.
+- [ ] Amend `docs/spec.md` §2 to drop the second return value from `run_cohort_agent`'s signature (plan.md §1 — the `bool` had no defined meaning for Role 2's single-step design)
+- [ ] **Spec cleanup:** now that `plan.md` has resolved the execution-model, driver-lifecycle, and node-wrapper items spec.md's own scope note flagged, confirm spec.md's corresponding paragraphs stay trimmed to the constraint level with pointers to `plan.md` (already done in this pass) — don't let detail creep back into spec.md as this repo evolves
+- [ ] **Blocking — confirm before Phase 5:** is the patient data used across Blocks 3–6 synthetic/de-identified, or does it resemble real PHI? (plan.md §16). This gates whether full state can be traced to LangSmith as-is starting in Phase 5. Get this confirmed with Mili directly; do not let Phase 5 proceed on the unconfirmed assumption.
+- [ ] Push `phase-1-spec`, open PR covering spec + plan + tasks together
+
+## Phase 2 — TDD (branch: `phase-2-tdd`)
+
+Write failing tests first, against fakes — no live Neo4j/RAG/LLM calls in this phase.
+
+- [ ] `scripts/schemas.py`: define `CohortResult`, `ReconciliationResult`, `Citation`, `MultiAgentAnswer`, `MultiAgentState` (plan.md §2's file layout, spec.md §3's field lists)
+- [ ] `tests/test_schemas.py`: validate field types, especially `CohortResult.question: QuestionInput` vs `MultiAgentAnswer.question: str` (spec.md §3 — don't let these drift to the same type by accident)
+- [ ] `tests/test_cohort_agent.py`: fakes for `graph_query_fn`/`count_fn`, covering:
+  - `outcome="answered"` happy path
+  - `outcome="nothing_found"` (zero matches)
+  - `outcome="tool_error"` after exhausting `_MAX_TOOL_RETRIES` retries (plan.md §7's 10s-per-attempt assumption, verified against fake timing, not real Neo4j)
+  - never raises even when the fake raises on every attempt
+- [ ] `tests/test_cohort_tool.py`: assert the Cypher string is parameterized (no f-string/`.format()` interpolation of `condition`/`lab`/`drug_a`/`drug_b` into the query text itself) and contains only `MATCH`/`RETURN` (spec.md §2's security constraints) — a static string-inspection test, not a live DB test
+- [ ] `tests/test_orchestrator.py`: fakes for both `run_agent` and `run_cohort_agent`, covering every row of spec.md §4's degradation matrix and every bullet of §2's reconciliation rules:
+  - both `answered`, `total_patients_matched <= 25`, counts match → `mode="reconciled"`, `confidence="high"` per plan.md §8's redefinition
+  - both `answered`, `total_patients_matched > 25` → Role 2's counts authoritative, `mode="reconciled"`, `confidence="high"`
+  - both `answered`, counts disagree despite `<= 25` → `confidence="low"`, `discrepancy_flag=True`, `authoritative_source="neither"` (plan.md §8's `low` tier)
+  - one `nothing_found`, other `answered` → same as above, plus assert `ReconciliationResult.notes` reflects the actual `get_known_vocabulary()` lookup result (plan.md §12), not a generic guess string
+  - both `nothing_found` → `mode="reconciled"`, zero patients, no discrepancy
+  - `clinical_error` (tool_error) + cohort succeeds → `mode="cohort_only_degraded"`, answer text from plan.md §15's template, no citations, and explicitly assert `confidence="high"` (plan.md §8 — Role 2's exhaustive count is the sole source here, and it's exhaustive regardless of Role 1's availability; don't let this accidentally fall through to `medium`/`low` since Role 1 produced nothing to check a count against)
+  - clinical succeeds + `cohort_error` (tool_error) → `mode="clinical_only_degraded"`, and explicitly assert `confidence="medium"` when `len(clinical_result.rag_patient_ids) >= 15`, or `confidence="low"` when it's below 15 (plan.md §8's corrected, broadened `medium` band) — cover both sides of that boundary as separate test cases, not just one
+  - both `tool_error` → `mode="both_failed"`, `confidence="low"`, never raises
+  - `clinical_count_step_ran=False` → treated as no comparable count, not a `0` (spec.md §3) — assert this explicitly, don't just assume it falls out of other logic
+  - a fake that raises an exception outside the agents' own documented contract → caught by the node wrapper's own try/except (plan.md §5), classified via `classify_exception`, never crashes the graph
+- [ ] `tests/test_error_classification.py`: `classify_exception` maps each of the four exception categories from plan.md §5 correctly
+- [ ] `tests/test_orchestrator.py` — timeout-specific cases (plan.md §4's thread-leak note): assert a branch that exceeds the 150s ceiling reports `"timeout"` correctly via the dedicated `block6_executor`, and assert a late-arriving result from an already-timed-out call is logged as a warning rather than silently dropped
+- [ ] Session-scoped pytest fixture that calls `driver.close()` after the full test session (plan.md §6's teardown note) — confirm no lingering connections after a test run
+- [ ] Confirm all of the above fail for the right reason (no implementation exists yet) before moving to Phase 3
+- [ ] Push `phase-2-tdd`, open PR
+
+## Phase 3 — Implement (branch: `phase-3-implement`)
+
+- [ ] `scripts/cohort_tool.py`: the enumeration Cypher (one-clause edit of Block 5's `VERIFY_PATIENTS_QUERY_TEMPLATE` per spec.md §2 — drop `AND p.person_id IN $person_ids`), exhaustive drug-count query, `get_driver()` factory (plan.md §6 — cached, long-lived, injectable)
+- [ ] `scripts/cohort_agent.py`: `run_cohort_agent` — plain retry loop (no internal LangGraph; single-step, doesn't need one), 2 retries, 10s Cypher timeout (plan.md §7), returns `CohortResult` only (plan.md §1's corrected signature)
+- [ ] `scripts/error_classification.py`: `classify_exception` implementation
+- [ ] `scripts/orchestrator.py`: `MultiAgentState` graph — `dispatch` → async `clinical_node`/`cohort_node` (via a dedicated `block6_executor` `ThreadPoolExecutor`, not bare `asyncio.to_thread`, wrapped in `asyncio.wait_for(..., timeout=150)` per plan.md §4/§7, with a warning logged if a timed-out call's thread later completes anyway) → `reconcile_node` (implements spec.md §2's rules + plan.md §8's confidence redesign + §15's answer-text template + §12's runtime `get_known_vocabulary()` call, with a TTL cache refresh, on any `nothing_found`/`answered` split) → both `run_multi_agent` (sync) and `run_multi_agent_async` (plan.md §4 — required for Block 8's future async FastAPI integration, not optional) entry points, with the sync version delegating to the async one
+- [ ] Run Phase 2's test suite against this implementation — all green, no test edits to make them pass (if a test needs changing, that's a signal the test was wrong in Phase 2, fix it there with its own commit, don't quietly adjust it here)
+- [ ] Push `phase-3-implement`, open PR
+
+## Phase 4 — Data & Validation (branch: `phase-4-data`)
+
+- [ ] Copy `data/seed/ci_graph_seed.cypher` from Block 5's current file (plan.md §10 — same frozen snapshot, not regenerated)
+- [ ] **Ground-truth re-verification (spec.md §6, plan.md §11):** run the new unbounded enumeration query once, by hand, against the seed data for the two questions Block 5's eval flagged as top_k-capped. Record the real total patient count and real drug_a/drug_b split for each. Update `data/eval/answer_key.json` with these independently-verified numbers — do not reuse Block 5's existing capped answer as ground truth for these two questions.
+- [ ] `scripts/vocabulary_check.py` (plan.md §12): the CI-time entry point, plus the shared `get_known_vocabulary()` function it's built on — cross-reference Block 3's distinct `condition_name`/lab property values against `data/eval/questions.json`'s exact strings for the CI-time check; the same function is what Phase 3's `reconcile_node` calls at runtime for any question, not just the fixed 8
+- [ ] Run `vocabulary_check.py` against the real seed data now, before wiring it into CI — confirm it actually passes against the current questions, or fix the mismatch it finds
+- [ ] Provision the `block6_readonly` Neo4j role/user (plan.md §6) with read-only privileges on the relevant labels; wire its credentials into this repo's env config, separate from Block 3's load-time credentials
+- [ ] Push `phase-4-data`, open PR
+
+## Phase 5 — CI & Eval Harness (branch: `phase-5-ci`)
+
+- [ ] GitHub Actions workflow: spin up a disposable Neo4j instance, load `ci_graph_seed.cypher`, run `vocabulary_check.py` first (fail fast if it doesn't pass), then the test suite from Phase 2/3
+- [ ] **Decide explicitly (plan.md §13's flag): do the 8 fixed questions run sequentially or concurrently in the eval harness?** Don't default into concurrency just because `asyncio.gather` is convenient — each question already fans out to 2 agents internally, so running all 8 questions concurrently on top of that is up to 16 simultaneous calls to real, rate-limited external APIs (Pinecone, Claude). Pick one deliberately and note why.
+- [ ] Eval harness: run all 8 fixed questions through `run_multi_agent`, score recall against the (now corrected) `answer_key.json`, with the two previously-capped questions scored against their newly-verified ground truth (Phase 4)
+- [ ] Eval dimension for graceful degradation (spec.md §6): inject synthetic failures via fakes for each row of the degradation matrix, assert correct `mode` and no unhandled exception
+- [ ] Discrepancy scoring (plan.md §14): any `discrepancy_flag=True` on the 8 fixed questions fails the build, reported separately from the recall metric
+- [ ] `scripts/run_log.py` (plan.md §9): wire into `run_multi_agent` so every invocation (eval and otherwise) appends to `data/eval/run_log.jsonl`
+- [ ] Regression gate: a drop in recall (including on the two previously-capped questions) fails the build
+- [ ] **Measure real latency** (plan.md §13): record actual median/p95 latency across the eval suite's runs from `run_log.jsonl`; this measured number, not plan.md's ~5–12s estimate, becomes what future runs are checked against
+- [ ] Report in the PR description, all as real measured output from this CI run, not targets/estimates from spec.md or plan.md: before/after recall on the two previously-capped questions, median/p95 latency, and total/average cost + token usage across the eval suite
+- [ ] Push `phase-5-ci`, open PR
+
+## Phase 6 — Docs & Wrap-up (branch: `phase-6-docs`)
+
+- [ ] README: problem, architecture diagram (the dispatch → two branches → reconcile shape from plan.md §3), tech stack, results (real recall numbers from Phase 5), AI-assisted workflow note
+- [ ] "What I'd do next" section (mirroring Block 5's own pattern): the cost short-circuit deferred in plan.md §17, DB-level permission hardening beyond the read-only role if any gaps remain, PHI-in-traces redaction if the synthetic-data assumption (plan.md §16) turns out not to hold, and a real process-level driver shutdown hook (plan.md §6) needed once/if this repo is ever deployed as a long-running service rather than run as CI/CLI
+- [ ] Confirm every item in spec.md §7's Acceptance Criteria is actually true against the committed code, not just assumed — go through the list one by one
+- [ ] Final PR, tag for Block 7 to pick up (threat model against this repo's new Cypher surface and the security constraints already flagged in spec.md §2)
