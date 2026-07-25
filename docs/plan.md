@@ -2,15 +2,14 @@
 
 Reads against `docs/spec.md`. Every "decide in plan.md" item spec.md left open gets a concrete decision below, with reasoning — not just a restatement of the question. Where a decision requires a number that can only come from running something against real data (not derivable from reasoning alone), that's flagged as a task for `tasks.md`, not guessed here.
 
-## 1. One correction to the spec, found while planning
+## 1. Cohort Agent entry point
 
-Spec §2 gives Role 2's entry point as `run_cohort_agent(...) -> tuple[CohortResult, bool]`, mirroring Block 5's `run_agent(...) -> tuple[ClinicalAnswer, bool]` shape. But Block 5's second value (`count_step_ran`) means something specific there: Role 1 has multiple conditional steps (search → count → synthesize), and that boolean reports whether the count step actually ran. Role 2 has no equivalent multi-step structure — it's one combined enumerate-and-count Cypher call, not a pipeline with an optional sub-step to report on. Copying the two-tuple shape for signature parity gives it a boolean with no defined meaning.
+Role 2's entry point returns `CohortResult` alone, not a `tuple[CohortResult, bool]`. Block 5's `run_agent(...) -> tuple[ClinicalAnswer, bool]` shape doesn't carry over: its second value (`count_step_ran`) reports whether Role 1's multi-step pipeline (search → count → synthesize) actually reached its count step — a meaningful signal for a multi-step pipeline. Role 2 has no equivalent structure; it's one combined enumerate-and-count Cypher call, not a pipeline with an optional sub-step to report on. A second boolean here would have no defined meaning.
 
-**Decision:** drop the second return value. Role 2's entry point is:
 ```python
 run_cohort_agent(question: QuestionInput, *, graph_query_fn=query_full_cohort, count_fn=count_drugs_exhaustive) -> CohortResult
 ```
-Recommend amending spec.md §2 to match — flagging here rather than silently diverging from the committed spec.
+`docs/spec.md` §2 states this signature directly.
 
 ## 2. File layout
 
@@ -59,7 +58,7 @@ Block 5's `run_agent` and the new `run_cohort_agent` are both synchronous, block
 - Compile the graph normally; invoke it with `await graph.ainvoke(initial_state)`.
 - Expose **both** a sync and an async public entry point, not just one: `run_multi_agent(question) -> MultiAgentAnswer` (a thin wrapper around `asyncio.run(graph.ainvoke(...))`) for this repo's own CLI/eval-harness usage, **and** `async def run_multi_agent_async(question) -> MultiAgentAnswer` (directly `await`s `graph.ainvoke(...)`) for callers that are already inside a running event loop. This matters because `asyncio.run()` raises `RuntimeError: asyncio.run() cannot be called from a running event loop` if invoked from inside one — and spec.md §8 already anticipates Block 8 wrapping this in a FastAPI service, whose route handlers calling external APIs are almost always `async def`. Building only the sync wrapper today would work fine for this block's own testing and CI, then break on first contact with the exact integration spec.md flags as the eventual consumer. `run_multi_agent` can simply delegate to `run_multi_agent_async` under the hood (`asyncio.run(run_multi_agent_async(question))`) so there's one real implementation, not two.
 
-This is the concrete mechanism behind the mentor's "let LangGraph do it natively" — the graph's shape doesn't create concurrency by itself, the executor + `.ainvoke()` does.
+This is the concrete mechanism behind "let LangGraph do it natively" — the graph's shape doesn't create concurrency by itself, the executor + `.ainvoke()` does.
 
 **Thread-leak risk, and why it matters here specifically:** `asyncio.wait_for(..., timeout=150)` (§7) stops the *awaiting* coroutine when it times out, but it cannot forcibly kill the underlying OS thread `run_in_executor` started — Python threads aren't cancellable. If `run_agent` or `run_cohort_agent` is genuinely hung (not just slow), that thread keeps running indefinitely in the background even after the branch has been reported as timed out. Two consequences to design around, not just note: (1) if that orphaned call eventually does return, its result is silently discarded — log a warning when this happens (comparing the thread's actual completion time against when the timeout fired) so a CI run doesn't quietly hide "it actually would have succeeded 20s later" information; (2) repeated timeouts (e.g. during a sustained Neo4j outage across many eval questions) leave repeated orphaned threads occupying executor slots — this is exactly why `block6_executor` above is a dedicated pool sized for this repo's own load, not the shared default `asyncio.to_thread` pool every other concurrent asyncio operation in the process also draws from. The 150s ceiling should be understood as a best-effort supervisory backstop for hangs that occur *before* the tool's own internal timeouts even start their clock (e.g. DNS resolution, initial TCP handshake) — the real defense against a hung call is still each tool's own internal timeout (10s Neo4j, 10s Pinecone/Claude), which actually aborts the in-flight request at the client-library level, not just stops waiting for it.
 
@@ -100,14 +99,14 @@ This is a genuine second line of defense: `run_agent`/`run_cohort_agent` are tru
 
 Derived from confirmed constants, not guessed round numbers:
 
-- **Cohort Agent's Cypher call:** start at **10s**, matching Block 5's existing `count_drugs` Neo4j timeout precedent (the only comparable Neo4j-timeout data point this project has). Flag explicitly for re-measurement once implemented — the unbounded query (no `person_id IN [...]` pre-filter) may scan more of the graph than the query it's derived from, so 10s is a starting assumption, not a verified value. If eval runs show it's consistently too tight, raise it and record the real number that worked, not silently bump it.
-- **Branch-level supervisory timeout:** derived from Role 1's own worst case, since it's the slower agent. Confirmed constants: `_MAX_TOOL_RETRIES = 2` (3 attempts) on search, 3 attempts on count (10s Neo4j timeout each ⇒ ~30s worst case), and `_MAX_ANSWER_RETRIES = 1` (2 attempts) on answer synthesis (assume comparable ~10s/attempt ⇒ ~20s worst case).
+- **Cohort Agent's Cypher call:** starts at **10s**, matching Block 5's existing `count_drugs` Neo4j timeout precedent (the only comparable Neo4j-timeout data point this project has). This is a starting value, not a permanently fixed one — the unbounded query (no `person_id IN [...]` pre-filter) may scan more of the graph than the query it's derived from. If eval runs show it's consistently too tight, raise it and record the real number that worked, not silently bump it.
+- **Branch-level supervisory timeout:** derived from Role 1's own worst case, since it's the slower agent. `_MAX_TOOL_RETRIES = 2` (3 attempts) on search, 3 attempts on count (10s Neo4j timeout each ⇒ ~30s worst case), and `_MAX_ANSWER_RETRIES = 1` (2 attempts) on answer synthesis (~10s/attempt ⇒ ~20s worst case).
 
-  **Search step, corrected 2026-07-24:** the original draft assumed ~20s/attempt (10s Pinecone + 10s Claude, sequential, *inside* Block 4's `/query` handler) ⇒ ~60s worst case for 3 attempts. Phase 1's interface re-check (`tasks.md`) has now confirmed the previously-unverified number: Block 5's own outbound HTTP client to Block 4's `/query` (`rag_tool.py:60`) sets `requests.post(..., timeout=10)` — **tighter** than the 20s Block-4-internal ceiling, not looser or equal. The client-side call aborts at 10s regardless of whether Block 4 is still working server-side, so the real worst case per search attempt is **10s, not 20s** ⇒ **~30s worst case for 3 attempts**, not ~60s.
+  **Search step:** Block 5's own outbound HTTP client to Block 4's `/query` (`rag_tool.py:60`) sets `requests.post(..., timeout=10)` — tighter than Block 4's internal 10s+10s ceiling, not looser or equal. The client-side call aborts at 10s regardless of whether Block 4 is still working server-side, so the real worst case per search attempt is **10s** ⇒ **~30s worst case for 3 attempts**.
 
-  Revised sum: 30s (search) + 30s (count) + 20s (synthesis) = **~80s theoretical worst case for Role 1**, down from the original ~110s estimate.
+  Sum: 30s (search) + 30s (count) + 20s (synthesis) = **~80s theoretical worst case for Role 1**.
 
-  Setting the branch-level ceiling below the worst case would cut off legitimate retries the tool's own logic is still working through — so the ceiling exists only to catch hangs *outside* what these timeouts already cover (e.g. a hung DNS resolution or TCP handshake before a client library's own timeout clock even starts). **Decision: 150s per branch stays unchanged** — it was already generous headroom over the original ~110s estimate, and is now nearly 2x the corrected ~80s worst case, so no downward revision needed either; simpler to keep one confirmed-safe number than re-tune it to shave off margin that costs nothing to keep. Applied uniformly to both branches (Role 2's own worst case is much shorter — 3 attempts × 10s ⇒ ~30s). Enforced via `asyncio.wait_for(...)` wrapping each `loop.run_in_executor(block6_executor, ...)` call in §4/§5's node wrappers; a `TimeoutError` here is caught by §5's node-level try/except and classified as `"timeout"` — with the caveat from §4's thread-leak note that this stops the wait, not the underlying thread.
+  Setting the branch-level ceiling below the worst case would cut off legitimate retries the tool's own logic is still working through — so the ceiling exists only to catch hangs *outside* what these timeouts already cover (e.g. a hung DNS resolution or TCP handshake before a client library's own timeout clock even starts). **Decision: 150s per branch** — nearly 2x the ~80s worst case, generous headroom without needing to re-tune it to shave off margin that costs nothing to keep. Applied uniformly to both branches (Role 2's own worst case is much shorter — 3 attempts × 10s ⇒ ~30s). Enforced via `asyncio.wait_for(...)` wrapping each `loop.run_in_executor(block6_executor, ...)` call in §4/§5's node wrappers; a `TimeoutError` here is caught by §5's node-level try/except and classified as `"timeout"` — with the caveat from §4's thread-leak note that this stops the wait, not the underlying thread.
 
 ## 8. Confidence tier redesign
 
@@ -129,7 +128,7 @@ The eval harness runs against the same frozen `ci_graph_seed.cypher` snapshot Bl
 
 ## 11. Ground-truth re-verification for the two previously-capped questions
 
-This can't be resolved by reasoning — it requires actually running the unbounded enumeration query against the seed data once, by hand, and recording the real total. **Task, not a plan-level decision** (see `tasks.md` Phase 2). Until that's done, `docs/tasks.md` and this plan explicitly do not claim a specific target recall number for those two questions beyond "the exhaustive count, whatever it turns out to be" — recall improving is only a real, checkable claim once that ground truth exists independently of the process being fixed.
+This can't be resolved by reasoning — it requires actually running the unbounded enumeration query against the seed data once, by hand, and recording the real total. **Task, not a plan-level decision** (see `tasks.md` Phase 4). This plan and `docs/tasks.md` do not claim a specific target recall number for those two questions beyond "the exhaustive count, whatever it turns out to be" — recall improving is only a real, checkable claim once that ground truth exists independently of the process being fixed.
 
 ## 12. Vocabulary consistency check
 
@@ -165,7 +164,7 @@ f"No supporting evidence citations are available for this run because the clinic
 
 ## 16. PHI in traces
 
-**Confirmed by Mili, 2026-07-24:** patient data across Blocks 3–6 is synthetic/de-identified, not real PHI. Full state (including patient IDs and RAG-cited snippets) is accepted as-is in LangSmith traces for this block — no redaction needed. Phase 5 is clear to proceed on this basis; the gating task in `tasks.md` Phase 1 is closed.
+Patient data across Blocks 3–6 is synthetic/de-identified, not real PHI. Full state (including patient IDs and RAG-cited snippets) is accepted as-is in LangSmith traces for this block — no redaction needed.
 
 ## 17. Cost of always running both agents
 
@@ -173,4 +172,4 @@ Accepted as the point of the exercise — the assignment is specifically about r
 
 ## 18. Testing strategy
 
-TDD, matching Block 5's `phase-2-tdd` → `phase-3-implement` precedent: write failing tests first against the schemas and reconciliation logic (using fakes for `run_agent`, `run_cohort_agent`, and the Neo4j driver — never live calls in unit tests), covering every row of spec §4's matrix, every bullet of §2's reconciliation rules (including the `nothing_found`/`answered` split and the `clinical_count_step_ran=False` gating), and the node-wrapper try/except behavior from §5 above. Only after those tests exist and fail for the right reason does implementation begin.
+TDD: write failing tests first against the schemas and reconciliation logic (using fakes for `run_agent`, `run_cohort_agent`, and the Neo4j driver — never live calls in unit tests), covering every row of spec §4's matrix, every bullet of §2's reconciliation rules (including the `nothing_found`/`answered` split and the `clinical_count_step_ran=False` gating), and the node-wrapper try/except behavior from §5 above. Only after those tests exist and fail for the right reason does implementation begin.
