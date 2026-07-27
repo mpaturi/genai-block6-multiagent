@@ -34,6 +34,10 @@ _LAB_PROPERTY = {
     "Glucose": "latest_glucose",
     "HbA1c": "latest_hba1c",
 }
+# Public alias so other modules (scripts/vocabulary_check.py) can see
+# which lab names this repo's Cypher knows how to handle, without
+# reaching into the private _LAB_PROPERTY mapping directly.
+KNOWN_LAB_NAMES = set(_LAB_PROPERTY.keys())
 _COMPARISON_OP = {"above": ">", "below": "<"}
 
 # The unbounded enumeration query - condition/value are Cypher
