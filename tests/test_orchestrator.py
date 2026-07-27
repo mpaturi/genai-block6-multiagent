@@ -216,11 +216,18 @@ def test_nothing_found_answered_split_reports_vocabulary_looks_consistent(monkey
     assert "unexplained" in result.caveat.lower() or "consistent" in result.caveat.lower()
 
 
-def test_clinical_count_step_ran_false_is_not_treated_as_a_zero_count():
+def test_clinical_count_step_ran_false_is_not_treated_as_a_zero_count(monkeypatch):
     # count_step_ran=False (Role 1 short-circuited before counting) must
     # route to the same "no comparable count" handling as the
     # nothing_found/answered split above, never as a literal 0 that
-    # happens to be smaller than cohort's small-but-real count.
+    # happens to be smaller than cohort's small-but-real count. This
+    # routes through the same vocabulary-check path as those tests, so it
+    # needs the same fake - without it, this test was making a real,
+    # live Neo4j call (a Phase 2 bug: caught when Phase 3's orchestrator
+    # actually exercised this path).
+    monkeypatch.setattr(
+        orchestrator, "get_known_vocabulary", lambda: {"conditions": {"hypertension"}, "labs": {"SBP"}}
+    )
     clinical_fn = _fn((_clinical_answer([], {}, outcome="nothing_found"), False))
     cohort_fn = _fn(_cohort_result(2, 1, 1))
 
