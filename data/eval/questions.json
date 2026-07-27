@@ -1,0 +1,74 @@
+[
+  {
+    "id": "q1",
+    "condition": "Essential hypertension",
+    "lab": "SBP",
+    "comparison": "above",
+    "value": 140,
+    "drug_a": "Lisinopril",
+    "drug_b": "Amlodipine"
+  },
+  {
+    "id": "q2",
+    "condition": "Osteoporosis",
+    "lab": "BMI",
+    "comparison": "below",
+    "value": 22,
+    "drug_a": "Alendronic acid",
+    "drug_b": "Naproxen"
+  },
+  {
+    "id": "q3",
+    "condition": "Pulmonary embolism",
+    "lab": "SBP",
+    "comparison": "below",
+    "value": 100,
+    "drug_a": "Warfarin",
+    "drug_b": "Enoxaparin"
+  },
+  {
+    "id": "q4",
+    "condition": "Atrial fibrillation",
+    "lab": "SBP",
+    "comparison": "above",
+    "value": 150,
+    "drug_a": "Digoxin",
+    "drug_b": "Carvedilol"
+  },
+  {
+    "id": "q5",
+    "condition": "Hyperlipidemia",
+    "lab": "HbA1c",
+    "comparison": "above",
+    "value": 7,
+    "drug_a": "Simvastatin",
+    "drug_b": "Metformin"
+  },
+  {
+    "id": "q6",
+    "condition": "Congestive heart failure",
+    "lab": "SBP",
+    "comparison": "below",
+    "value": 110,
+    "drug_a": "Furosemide",
+    "drug_b": "Carvedilol"
+  },
+  {
+    "id": "q7",
+    "condition": "Streptococcal pharyngitis",
+    "lab": "BMI",
+    "comparison": "below",
+    "value": 25,
+    "drug_a": "Penicillin V",
+    "drug_b": "Ciprofloxacin"
+  },
+  {
+    "id": "q8",
+    "condition": "Anemia",
+    "lab": "Glucose",
+    "comparison": "above",
+    "value": 150,
+    "drug_a": "Epoetin Alfa",
+    "drug_b": "Insulin"
+  }
+]
