@@ -43,7 +43,7 @@ Write failing tests first, against fakes — no live Neo4j/RAG/LLM calls in this
 - [x] Session-scoped pytest fixture that calls `driver.close()` after the full test session (plan.md §6's teardown note) — confirm no lingering connections after a test run
 - [x] Confirm all of the above fail for the right reason (no implementation exists yet) before moving to Phase 3: `test_schemas.py` (22 tests) passes since `scripts/schemas.py` already exists; `test_cohort_agent.py`, `test_cohort_tool.py`, `test_error_classification.py`, and `test_orchestrator.py` each fail collection with a `ModuleNotFoundError`/`ImportError` naming the specific Phase 3 module still missing
 - [x] `requirements.txt` pins `block5_agent` as a git dependency against Block 5's `main` (now pip-installable per Block 5's own packaging PR #11, merged) — confirmed `pip install -r requirements.txt` pulls it in cleanly alongside this repo's own deps
-- [ ] Push `phase-2-tdd`, open PR
+- [x] Push `phase-2-tdd`, open PR (PR #2, against `phase-1-spec`)
 
 ## Phase 3 — Implement (branch: `phase-3-implement`)
 
