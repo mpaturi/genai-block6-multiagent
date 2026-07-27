@@ -1,0 +1,58 @@
+{
+  "q1": {
+    "total_patients_matched": 25,
+    "drug_a_count": 10,
+    "drug_b_count": 8,
+    "ground_truth_source": "verified_by_hand_phase4",
+    "note": "Flagged by Block 5 as top_k-capped (patients_checked==25). Independently re-run against data/seed/ci_graph_seed.cypher via the unbounded enumeration query (docs/plan.md §11) - the real, exhaustive population is exactly 25, identical to Block 5's original RAG-capped count. The cap happened not to lose any real matches for this seed; this number is now independently confirmed rather than assumed."
+  },
+  "q2": {
+    "total_patients_matched": 3,
+    "drug_a_count": 2,
+    "drug_b_count": 0,
+    "ground_truth_source": "block5_answer_key_uncapped",
+    "note": "patients_checked=3 in Block 5's answer_key.json, well under the top_k=25 ceiling - RAG already saw the full population, so no re-verification needed."
+  },
+  "q3": {
+    "total_patients_matched": 8,
+    "drug_a_count": 0,
+    "drug_b_count": 5,
+    "ground_truth_source": "block5_answer_key_uncapped",
+    "note": "patients_checked=8 in Block 5's answer_key.json, well under the top_k=25 ceiling - RAG already saw the full population, so no re-verification needed."
+  },
+  "q4": {
+    "total_patients_matched": 1,
+    "drug_a_count": 1,
+    "drug_b_count": 0,
+    "ground_truth_source": "block5_answer_key_uncapped",
+    "note": "patients_checked=1 in Block 5's answer_key.json, well under the top_k=25 ceiling - RAG already saw the full population, so no re-verification needed."
+  },
+  "q5": {
+    "total_patients_matched": 3,
+    "drug_a_count": 2,
+    "drug_b_count": 0,
+    "ground_truth_source": "block5_answer_key_uncapped",
+    "note": "patients_checked=3 in Block 5's answer_key.json, well under the top_k=25 ceiling - RAG already saw the full population, so no re-verification needed."
+  },
+  "q6": {
+    "total_patients_matched": 18,
+    "drug_a_count": 0,
+    "drug_b_count": 5,
+    "ground_truth_source": "block5_answer_key_uncapped",
+    "note": "patients_checked=18 in Block 5's answer_key.json, well under the top_k=25 ceiling - RAG already saw the full population, so no re-verification needed."
+  },
+  "q7": {
+    "total_patients_matched": 25,
+    "drug_a_count": 0,
+    "drug_b_count": 0,
+    "ground_truth_source": "verified_by_hand_phase4",
+    "note": "Flagged by Block 5 as top_k-capped (patients_checked==25). Independently re-run against data/seed/ci_graph_seed.cypher via the unbounded enumeration query (docs/plan.md §11) - the real, exhaustive population is exactly 25, identical to Block 5's original RAG-capped count. The cap happened not to lose any real matches for this seed; this number is now independently confirmed rather than assumed."
+  },
+  "q8": {
+    "total_patients_matched": 19,
+    "drug_a_count": 0,
+    "drug_b_count": 3,
+    "ground_truth_source": "block5_answer_key_uncapped",
+    "note": "patients_checked=19 in Block 5's answer_key.json, well under the top_k=25 ceiling - RAG already saw the full population, so no re-verification needed."
+  }
+}
