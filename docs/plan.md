@@ -13,6 +13,8 @@ run_cohort_agent(question: QuestionInput, *, graph_query_fn=query_full_cohort, c
 
 ## 2. File layout
 
+**Cross-repo import mechanism:** Block 5 wasn't pip-installable (no `setup.py`/`pyproject.toml`) when this was first written. Resolved by adding minimal packaging to Block 5's own repo (renamed `scripts/` → `block5_agent/`, added `pyproject.toml`, merged to Block 5's `main`) rather than vendoring a copy of its types here or working around it with `sys.path`/`PYTHONPATH` tricks — packaging metadata isn't an interface change, so this doesn't conflict with §8's "modifying Block 5's interfaces happens in its own repo" scoping. `requirements.txt` pins `block5_agent @ git+https://github.com/mpaturi/genai-block5-agent.git@main`; `scripts/schemas.py` imports `QuestionInput`/`ClinicalAnswer` from `block5_agent.schemas` directly.
+
 New repo `genai-block6-multiagent`:
 ```
 scripts/
