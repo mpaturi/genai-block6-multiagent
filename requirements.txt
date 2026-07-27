@@ -1,0 +1,9 @@
+block5_agent @ git+https://github.com/mpaturi/genai-block5-agent.git@main
+langgraph==1.2.9
+langsmith==0.10.6
+anthropic==0.116.0
+pydantic==2.13.4
+neo4j==6.2.0
+requests==2.34.2
+python-dotenv==1.2.2
+pytest==9.1.1
