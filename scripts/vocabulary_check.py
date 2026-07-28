@@ -94,16 +94,25 @@ def _load_questions(questions_path: Path) -> list[dict]:
 
 
 def check_vocabulary(*, driver=None, questions_path: Path = _QUESTIONS_PATH) -> list[str]:
-    """Cross-reference every question's condition/lab against Block 3's
-    real, current vocabulary (docs/plan.md §12's CI-time layer). Returns
-    a list of human-readable mismatch descriptions - empty if every
-    question's condition and lab has an exact match.
+    """Cross-reference every *answerable* question's condition/lab against
+    Block 3's real, current vocabulary (docs/plan.md §12's CI-time layer).
+    Returns a list of human-readable mismatch descriptions - empty if
+    every answerable question's condition and lab has an exact match.
+
+    Questions marked "answerable": false are skipped here on purpose -
+    they exist specifically to use a condition/lab this system has never
+    heard of (e.g. "schizophrenia"), so a vocabulary mismatch on one of
+    those is the expected, correct outcome, not a drift bug to flag.
+    Missing "answerable" is treated as true, so older question files
+    without the field still get checked as before.
     """
     questions = _load_questions(questions_path)
     vocabulary = get_known_vocabulary(driver=driver)
 
     mismatches = []
     for question in questions:
+        if not question.get("answerable", True):
+            continue
         question_id = question["id"]
         condition = question["condition"]
         lab = question["lab"]

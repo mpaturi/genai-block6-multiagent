@@ -111,7 +111,7 @@ This is the graceful-degradation requirement from the assignment, made concrete 
 ## 6. Tracing & Evaluation (same bar as Block 5)
 
 - Every run traced end-to-end (LangSmith or equivalent), tokens + latency captured per node, not just per run.
-- Automated eval suite runs in CI: reuse Block 5's 8-question fixed set, re-measure recall on the 2 previously-capped questions (target: full recall now that the cohort agent is unbounded); add ≥1 new eval dimension exercising the failure matrix in §4 (inject synthetic tool failures via fakes, assert correct `mode` and no unhandled exception).
+- Automated eval suite runs in CI: reuse Block 5's fixed question set — 11 questions total, 8 scored for recall (re-measuring the 2 previously-capped questions; target full recall now that the cohort agent is unbounded), plus 3 deliberately unanswerable control questions (Block 5's `answerable: false` entries) checked pass/fail that the system correctly reports no matches rather than scored for recall; add ≥1 new eval dimension exercising the failure matrix in §4 (inject synthetic tool failures via fakes, assert correct `mode` and no unhandled exception).
 - Per-run cost + token usage logged.
 - A regression in eval score (including a regression in the two previously-capped questions) fails the build.
 - Spec written and committed first, per SDD convention; plan.md and tasks.md follow before any code.

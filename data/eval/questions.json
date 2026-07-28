@@ -1,6 +1,7 @@
 [
   {
     "id": "q1",
+    "answerable": true,
     "condition": "Essential hypertension",
     "lab": "SBP",
     "comparison": "above",
@@ -10,6 +11,7 @@
   },
   {
     "id": "q2",
+    "answerable": true,
     "condition": "Osteoporosis",
     "lab": "BMI",
     "comparison": "below",
@@ -19,6 +21,7 @@
   },
   {
     "id": "q3",
+    "answerable": true,
     "condition": "Pulmonary embolism",
     "lab": "SBP",
     "comparison": "below",
@@ -28,6 +31,7 @@
   },
   {
     "id": "q4",
+    "answerable": true,
     "condition": "Atrial fibrillation",
     "lab": "SBP",
     "comparison": "above",
@@ -37,6 +41,7 @@
   },
   {
     "id": "q5",
+    "answerable": true,
     "condition": "Hyperlipidemia",
     "lab": "HbA1c",
     "comparison": "above",
@@ -46,6 +51,7 @@
   },
   {
     "id": "q6",
+    "answerable": true,
     "condition": "Congestive heart failure",
     "lab": "SBP",
     "comparison": "below",
@@ -55,6 +61,7 @@
   },
   {
     "id": "q7",
+    "answerable": true,
     "condition": "Streptococcal pharyngitis",
     "lab": "BMI",
     "comparison": "below",
@@ -64,11 +71,42 @@
   },
   {
     "id": "q8",
+    "answerable": true,
     "condition": "Anemia",
     "lab": "Glucose",
     "comparison": "above",
     "value": 150,
     "drug_a": "Epoetin Alfa",
     "drug_b": "Insulin"
+  },
+  {
+    "id": "q9",
+    "answerable": false,
+    "condition": "lung cancer",
+    "lab": "SBP",
+    "comparison": "above",
+    "value": 220,
+    "drug_a": "Metformin",
+    "drug_b": "Insulin"
+  },
+  {
+    "id": "q10",
+    "answerable": false,
+    "condition": "schizophrenia",
+    "lab": "Glucose",
+    "comparison": "above",
+    "value": 300,
+    "drug_a": "Simvastatin",
+    "drug_b": "Warfarin"
+  },
+  {
+    "id": "q11",
+    "answerable": false,
+    "condition": "appendicitis",
+    "lab": "HbA1c",
+    "comparison": "above",
+    "value": 13,
+    "drug_a": "Furosemide",
+    "drug_b": "Lisinopril"
   }
 ]

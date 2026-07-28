@@ -27,7 +27,7 @@ scripts/
   run_log.py            # append-only JSONL logger — see §9
 data/
   eval/
-    questions.json      # Block 5's 8-question fixed set, reused as-is
+    questions.json      # Block 5's fixed question set, reused as-is - 11 total: 8 scored for recall, plus 3 deliberately-unanswerable control questions ("answerable": false) checked pass/fail instead
     answer_key.json      # regenerated — see §11 (ground-truth re-verification)
   seed/
     ci_graph_seed.cypher # same frozen snapshot Block 5's CI uses — see §10
@@ -135,10 +135,10 @@ This can't be resolved by reasoning — it requires actually running the unbound
 
 ## 12. Vocabulary consistency check
 
-Two layers, not one — a CI-time check alone only covers the 8 fixed eval questions, but Role 2 runs unconditionally on *every* question this system ever receives (§Role 2 applicability, spec §2), including ones outside the eval set once Block 8 wires this to real input. A check that only runs once against a fixed list doesn't protect that general case.
+Two layers, not one — a CI-time check alone only covers the 8 scored fixed eval questions, but Role 2 runs unconditionally on *every* question this system ever receives (§Role 2 applicability, spec §2), including ones outside the eval set once Block 8 wires this to real input. A check that only runs once against a fixed list doesn't protect that general case.
 
-- **CI-time (`vocabulary_check.py`):** run once before the eval suite, queries Block 3's graph for its distinct `condition_name` values and lab property names, cross-references them against the exact strings in `data/eval/questions.json`. Fails loudly (non-zero exit, names the mismatched string) if any fixed eval question doesn't have an exact match.
-- **Runtime (`get_known_vocabulary()`):** the same lookup logic, refactored into a reusable function called from `reconcile_node` whenever it hits a `nothing_found`/`answered` split. Instead of writing a generic "this usually means a vocabulary mismatch" guess into `ReconciliationResult.notes`, the reconcile node checks whether the question's actual `condition`/`lab` value is in the known-vocabulary set and states the real finding — "confirmed: `condition` value not present in Block 3's graph" vs. "vocabulary looks consistent; disagreement is unexplained by this check" — for any question, not just the 8 in the eval set.
+- **CI-time (`vocabulary_check.py`):** run once before the eval suite, queries Block 3's graph for its distinct `condition_name` values and lab property names, cross-references them against the exact strings in `data/eval/questions.json`. Fails loudly (non-zero exit, names the mismatched string) if any of the 8 scored questions doesn't have an exact match. `data/eval/questions.json`'s 3 deliberately-unanswerable control questions (`"answerable": false`) are skipped by this check on purpose — their whole point is a condition Block 3's graph has never heard of (e.g. "schizophrenia"), so a mismatch there is the correct, expected outcome, not vocabulary drift to flag.
+- **Runtime (`get_known_vocabulary()`):** the same lookup logic, refactored into a reusable function called from `reconcile_node` whenever it hits a `nothing_found`/`answered` split. Instead of writing a generic "this usually means a vocabulary mismatch" guess into `ReconciliationResult.notes`, the reconcile node checks whether the question's actual `condition`/`lab` value is in the known-vocabulary set and states the real finding — "confirmed: `condition` value not present in Block 3's graph" vs. "vocabulary looks consistent; disagreement is unexplained by this check" — for any question, not just the 8 scored ones in the eval set.
 
 This closes the gap between what spec §2's reconciliation logic assumes (shared vocabulary) and what's actually verified — a one-time CI check on a fixed list doesn't cover a question nobody's seen yet.
 
@@ -150,7 +150,7 @@ Spec §6 asked for both an expected and a worst-case number; §7 above only deri
 
 This is an estimate for planning purposes only, not a measured number — flagged explicitly per this project's "real measured numbers only" convention. Phase 5 (`tasks.md`) must record the actual measured median/p95 latency from real CI eval runs, and that measured number — not this estimate — is what the eval harness's regression check should compare future runs against.
 
-**Flagging, not deciding here — depends on how the eval harness in Phase 5 actually gets written:** if the 8 fixed questions run concurrently (not just each question's own internal two-agent fan-out, but multiple questions in flight at once), that's up to 16 simultaneous calls to real external APIs (Pinecone, Claude) with real rate limits, on top of the thread-pool sizing concern above. Whoever writes Phase 5's eval harness should decide explicitly whether questions run sequentially or concurrently — not default into concurrency by accident just because `asyncio.gather` is easy to reach for once the per-question fan-out is already async.
+**Flagging, not deciding here — depends on how the eval harness in Phase 5 actually gets written:** if all 11 fixed questions run concurrently (not just each question's own internal two-agent fan-out, but multiple questions in flight at once), that's up to 22 simultaneous calls to real external APIs (Pinecone, Claude) with real rate limits — Role 2 runs unconditionally on every question, including the 3 deliberately-unanswerable ones, so they count toward this too — on top of the thread-pool sizing concern above. Whoever writes Phase 5's eval harness should decide explicitly whether questions run sequentially or concurrently — not default into concurrency by accident just because `asyncio.gather` is easy to reach for once the per-question fan-out is already async.
 
 ## 14. Discrepancy handling in the automated eval suite
 

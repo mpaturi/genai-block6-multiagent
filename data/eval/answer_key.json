@@ -54,5 +54,26 @@
     "drug_b_count": 3,
     "ground_truth_source": "block5_answer_key_uncapped",
     "note": "patients_checked=19 in Block 5's answer_key.json, well under the top_k=25 ceiling - RAG already saw the full population, so no re-verification needed."
+  },
+  "q9": {
+    "total_patients_matched": 0,
+    "drug_a_count": 0,
+    "drug_b_count": 0,
+    "ground_truth_source": "verified_by_hand_deliberately_unanswerable",
+    "note": "Deliberately-unanswerable control question (condition 'lung cancer' - not present anywhere in data/seed/ci_graph_seed.cypher's Condition nodes), matching Block 5's precedent (tasks.json's answerable:false entries). Independently confirmed zero matching patients by running the unbounded enumeration query directly against the seed data, not assumed from the condition's absence alone. Not recall-scored - Phase 5's eval harness must instead check this reports nothing_found/zero patients as a pass/fail control, separate from the 8-question recall percentage."
+  },
+  "q10": {
+    "total_patients_matched": 0,
+    "drug_a_count": 0,
+    "drug_b_count": 0,
+    "ground_truth_source": "verified_by_hand_deliberately_unanswerable",
+    "note": "Deliberately-unanswerable control question (condition 'schizophrenia' - not present anywhere in data/seed/ci_graph_seed.cypher's Condition nodes), matching Block 5's precedent (tasks.json's answerable:false entries). Independently confirmed zero matching patients by running the unbounded enumeration query directly against the seed data, not assumed from the condition's absence alone. Not recall-scored - Phase 5's eval harness must instead check this reports nothing_found/zero patients as a pass/fail control, separate from the 8-question recall percentage."
+  },
+  "q11": {
+    "total_patients_matched": 0,
+    "drug_a_count": 0,
+    "drug_b_count": 0,
+    "ground_truth_source": "verified_by_hand_deliberately_unanswerable",
+    "note": "Deliberately-unanswerable control question (condition 'appendicitis' - not present anywhere in data/seed/ci_graph_seed.cypher's Condition nodes), matching Block 5's precedent (tasks.json's answerable:false entries). Independently confirmed zero matching patients by running the unbounded enumeration query directly against the seed data, not assumed from the condition's absence alone. Not recall-scored - Phase 5's eval harness must instead check this reports nothing_found/zero patients as a pass/fail control, separate from the 8-question recall percentage."
   }
 }
