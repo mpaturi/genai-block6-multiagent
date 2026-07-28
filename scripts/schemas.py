@@ -89,17 +89,23 @@ class MultiAgentAnswer(BaseModel):
 class MultiAgentState(TypedDict):
     """The orchestrator's explicit, inspectable LangGraph state (see
     docs/spec.md §3). clinical_count_step_ran carries forward the second
-    value of Block 5's run_agent(...) -> tuple[ClinicalAnswer, bool] -
+    value of Block 5's run_agent(...) -> tuple[ClinicalAnswer, bool, dict] -
     otherwise silently dropped by this repo's clinical branch node. If
     False, Role 1 never reached its drug-counting step, so its counts are
     not a real second opinion to compare Role 2 against - treat this the
     same as Role 1 having no comparable count at all, not as a 0 count
-    that happens to disagree with Role 2.
+    that happens to disagree with Role 2. clinical_cost_info carries
+    forward run_agent's third value - {"cost_usd", "input_tokens",
+    "output_tokens"} - for scripts/run_log.py (plan.md §9). Stays None
+    on the cohort_only_degraded, both_failed, and out-of-contract-
+    exception paths, since Role 1 never successfully returned on any of
+    those.
     """
 
     question: QuestionInput
     clinical_result: Optional[ClinicalAnswer]
     clinical_count_step_ran: Optional[bool]
+    clinical_cost_info: Optional[dict]
     clinical_error: Optional[str]
     clinical_error_kind: Optional[ErrorKind]
     cohort_result: Optional[CohortResult]

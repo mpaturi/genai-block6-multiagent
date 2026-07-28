@@ -417,8 +417,12 @@ async def run_multi_agent_async(
 
     async def clinical_node(state: MultiAgentState) -> dict:
         def on_success(raw_result):
-            answer, count_step_ran = raw_result
-            return {"clinical_result": answer, "clinical_count_step_ran": count_step_ran}
+            answer, count_step_ran, cost_info = raw_result
+            return {
+                "clinical_result": answer,
+                "clinical_count_step_ran": count_step_ran,
+                "clinical_cost_info": cost_info,
+            }
 
         return await _run_branch(
             "clinical",
@@ -459,6 +463,7 @@ async def run_multi_agent_async(
         "question": question,
         "clinical_result": None,
         "clinical_count_step_ran": None,
+        "clinical_cost_info": None,
         "clinical_error": None,
         "clinical_error_kind": None,
         "cohort_result": None,
