@@ -35,7 +35,7 @@ Never raises on tool failure — same retry/degrade contract as Block 5 (2 retri
 **Security constraints (flagging now for Block 7's threat model):**
 - Cypher must be built with driver-level query parameters, never string interpolation of `condition`/`lab`/`drug_a`/`drug_b` values — these fields trace back to user-facing input once Block 8 integrates this into the capstone's app layer.
 - The Cohort Agent's Cypher must be read-only (`MATCH`/`RETURN` only) — no `CREATE`/`MERGE`/`DELETE`/`SET`. This is a new code path with direct, unmediated access to a graph DB other blocks also depend on; it has no business need to write anything, so it shouldn't be able to.
-- Application-code read-only (above) is one layer, not the whole defense: the Neo4j database user/role this driver connects as is scoped to read-only at the DB level (the `block6_readonly` role — see `docs/plan.md` §6), not just trusted to behave via query shape.
+- Application-code read-only (above) was meant to be one layer, not the whole defense, backed by a DB-level read-only `block6_readonly` role/user — see `docs/plan.md` §6. Phase 4 found this second layer isn't buildable on this project's actual stack (Neo4j Community Edition has no RBAC support at all), so application-code read-only is, for now, the sole enforced defense, not one of two.
 - Inherited, not introduced here: Role 1's LLM reads raw patient note text via RAG, and that text flows into `MultiAgentAnswer.answer` with no sanitization step. This is an indirect-prompt-injection surface (OWASP LLM Top 10) that predates Block 6, but Block 6 is the first place it feeds into a reconciled, multi-source answer — worth a paper trail here so Block 7 doesn't discover it cold.
 
 **Orchestrator (LangGraph `StateGraph`).**
