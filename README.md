@@ -41,7 +41,7 @@ Run locally against a fresh, cold-start disposable Neo4j container, in the exact
 | q9–q11 (deliberately-unanswerable controls) | **All pass** — zero patients correctly reported for all three |
 | Discrepancy check (8 scored questions) | **Pass** — no `discrepancy_flag=True` |
 | Degradation-matrix check | **Pass** — all 4 rows of the failure matrix produce the correct `mode` |
-| Latency (cold start; baseline reset in Phase 7 — q1's much larger population changed real latency) | median **922ms**, p95 **1031ms** |
+| Latency (cold start; baseline reset in Phase 7) | median **922ms**, p95 **1031ms** |
 | Cost / tokens | $0.0 / 0 tokens |
 
 **q1, before vs. after — the real story, not the coincidence:** Phase 4's first pass at q1 found its true population was exactly 25 patients, identical to Block 5's original RAG-capped count — a correct result at the time, but it turned out to be an artifact of the CI seed itself: Block 5 later discovered (own repo, `phase-12-fix-q1-seed`) that this bucket had only ever been seeded with the exact 25 patients its RAG search returns, so the golden answer and the capped output could never have disagreed, no matter how large the true population really was. With the seed corrected to its true, exhaustive 99-patient population, the contrast is now real and demonstrated, not theoretical: **Block 5's own RAG search still returns only 25 of those 99 patients**, so Block 5 now fails this question's accuracy check permanently, by its own design. **Block 6's Cohort Agent enumerates all 99 directly from the graph**, reconciling to `mode="reconciled"`, `confidence="high"`, the correct 99/49/28 — this is the gap Block 6 exists to close, shown against real data rather than asserted from a seed too small to test it.
@@ -49,6 +49,8 @@ Run locally against a fresh, cold-start disposable Neo4j container, in the exact
 **q7, before vs. after:** this one's true population genuinely is 25 — RAG's cap and reality coincide here, and that's still independently confirmed, not assumed.
 
 **Cost caveat:** the $0.0/0-token figures above reflect this CI configuration, where the answer-writing step is stubbed and never calls a real LLM — they are not a real production cost estimate. Separately, the underlying $/token rate this repo's logging inherits from Block 5 is not verified against Anthropic's current published pricing (see "What I'd do next" below) — treat any non-zero `cost_usd` this system reports as directional, not a budget number, until that's checked.
+
+**Latency caveat:** the ~5x latency drop between Phase 5's original baseline (p95 5282ms) and this run (p95 1031ms) is *not* explained by q1's population growing from 25 to 99 patients — a controlled A/B check (same fresh-container methodology, old seed vs. new seed) found both land in the same ~1.0-1.4s p95 range, consistent with Neo4j's relationship traversal making 25 vs. 99 matching rows a non-issue either way. Phase 5's 5282ms was most likely a one-off cold-start outlier for that specific run, not a stable number — treat single-sample latency baselines like this one as noisy until several real runs establish a trend, not as a precise figure on their own.
 
 ## AI-assisted workflow
 
