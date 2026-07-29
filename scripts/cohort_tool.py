@@ -104,9 +104,15 @@ def query_full_cohort(
     value: float,
     *,
     driver=None,
+    graph_query_timeout=None,
 ) -> dict:
     """Enumerate every patient matching condition/lab/comparison/value -
     no top_k ceiling. Returns {"patient_ids": [...]}.
+
+    graph_query_timeout overrides the module-level GRAPH_QUERY_TIMEOUT for
+    this call, same injectable pattern as `driver` - tests (or a future
+    caller that's found the default too tight/loose) can pass their own
+    without touching the module constant.
     """
     lab_property = _LAB_PROPERTY.get(lab)
     op = _COMPARISON_OP.get(comparison)
@@ -114,11 +120,12 @@ def query_full_cohort(
         raise CohortServiceError("invalid_lab_or_comparison", retryable=False)
 
     driver = driver if driver is not None else get_driver()
+    timeout = graph_query_timeout if graph_query_timeout is not None else GRAPH_QUERY_TIMEOUT
     try:
         with driver.session(database=NEO4J_DATABASE) as session:
             query_text = FULL_COHORT_QUERY_TEMPLATE.format(lab_property=lab_property, op=op)
             row = session.run(
-                Query(query_text, timeout=GRAPH_QUERY_TIMEOUT),
+                Query(query_text, timeout=timeout),
                 condition=condition,
                 value=value,
             ).single()
@@ -140,9 +147,13 @@ def count_drugs_exhaustive(
     drug_b: str,
     *,
     driver=None,
+    graph_query_timeout=None,
 ) -> dict:
     """Count drug_a/drug_b over the full matched cohort - no top_k
     ceiling. Returns {"drug_a_count": int, "drug_b_count": int}.
+
+    graph_query_timeout overrides the module-level GRAPH_QUERY_TIMEOUT for
+    this call, same injectable pattern as `driver`.
     """
     if not patient_ids:
         # Nothing to count - return immediately without opening a session.
@@ -154,10 +165,11 @@ def count_drugs_exhaustive(
     _validate_patient_ids(patient_ids)
 
     driver = driver if driver is not None else get_driver()
+    timeout = graph_query_timeout if graph_query_timeout is not None else GRAPH_QUERY_TIMEOUT
     try:
         with driver.session(database=NEO4J_DATABASE) as session:
             rows = session.run(
-                Query(EXHAUSTIVE_DRUG_COUNT_QUERY, timeout=GRAPH_QUERY_TIMEOUT),
+                Query(EXHAUSTIVE_DRUG_COUNT_QUERY, timeout=timeout),
                 person_ids=patient_ids,
             )
             drug_counts = {row["drug"]: row["patient_count"] for row in rows}

@@ -127,12 +127,15 @@ class _FakeResult:
 
 
 class _FakeSession:
-    def __init__(self, raise_exc=None, single_value=None, rows=None):
+    def __init__(self, raise_exc=None, single_value=None, rows=None, recorded_queries=None):
         self._raise_exc = raise_exc
         self._single_value = single_value
         self._rows = rows
+        self._recorded_queries = recorded_queries
 
     def run(self, query, **params):
+        if self._recorded_queries is not None:
+            self._recorded_queries.append(query)
         if self._raise_exc is not None:
             raise self._raise_exc
         return _FakeResult(single_value=self._single_value, rows=self._rows)
@@ -149,10 +152,16 @@ class _FakeDriver:
         self._raise_exc = raise_exc
         self._single_value = single_value
         self._rows = rows
+        # Populated with each Query object session.run() was called with,
+        # so tests can inspect e.g. .timeout without a live driver.
+        self.recorded_queries = []
 
     def session(self, database=None):
         return _FakeSession(
-            raise_exc=self._raise_exc, single_value=self._single_value, rows=self._rows
+            raise_exc=self._raise_exc,
+            single_value=self._single_value,
+            rows=self._rows,
+            recorded_queries=self.recorded_queries,
         )
 
 
@@ -203,3 +212,40 @@ def test_count_drugs_exhaustive_wraps_an_unknown_exception_as_non_retryable():
     except CohortServiceError as exc:
         assert exc.detail == "unexpected bug"
         assert exc.retryable is False
+
+
+# --- injectable GRAPH_QUERY_TIMEOUT (Phase 8 hardening) ---------------------
+
+
+def test_query_full_cohort_defaults_to_the_module_level_timeout():
+    driver = _FakeDriver(single_value={"matched_ids": []})
+
+    query_full_cohort("Essential hypertension", "SBP", "above", 140, driver=driver)
+
+    assert driver.recorded_queries[0].timeout == cohort_tool.GRAPH_QUERY_TIMEOUT
+
+
+def test_query_full_cohort_honors_a_graph_query_timeout_override():
+    driver = _FakeDriver(single_value={"matched_ids": []})
+
+    query_full_cohort(
+        "Essential hypertension", "SBP", "above", 140, driver=driver, graph_query_timeout=3
+    )
+
+    assert driver.recorded_queries[0].timeout == 3
+
+
+def test_count_drugs_exhaustive_defaults_to_the_module_level_timeout():
+    driver = _FakeDriver(rows=[{"drug": "Lisinopril", "patient_count": 1}])
+
+    count_drugs_exhaustive([1], "Lisinopril", "Amlodipine", driver=driver)
+
+    assert driver.recorded_queries[0].timeout == cohort_tool.GRAPH_QUERY_TIMEOUT
+
+
+def test_count_drugs_exhaustive_honors_a_graph_query_timeout_override():
+    driver = _FakeDriver(rows=[{"drug": "Lisinopril", "patient_count": 1}])
+
+    count_drugs_exhaustive([1], "Lisinopril", "Amlodipine", driver=driver, graph_query_timeout=3)
+
+    assert driver.recorded_queries[0].timeout == 3
