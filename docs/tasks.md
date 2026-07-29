@@ -76,7 +76,7 @@ Write failing tests first, against fakes — no live Neo4j/RAG/LLM calls in this
 - [x] Regression gate: `scripts/run_eval.py` compares this run's recall against `data/eval/latency_baseline.json`, failing the build on a drop; p95 latency delta is reported alongside it (not a hard gate — no latency threshold exists anywhere in spec.md/plan.md to gate against)
 - [x] **Measure real latency** (plan.md §13): `data/eval/latency_baseline.json` committed from a real, cold-start local run against a fresh disposable Neo4j container (recall=1.0, p95_latency_ms=5282.0) — this measured number, not plan.md's ~5–12s estimate, is what future runs are checked against
 - [x] Report in the PR description, all as real measured output from this CI run, not targets/estimates from spec.md or plan.md: before/after recall on the two previously-capped questions, median/p95 latency, and total/average cost + token usage across the eval suite
-- [ ] Push `phase-5-ci`, open PR
+- [x] Push `phase-5-ci`, open PR (PR #5, against `phase-4-data` — not merged, pending Block 5 PR #12's `phase-11-expose-cost` review)
 
 ## Phase 6 — Docs & Wrap-up (branch: `phase-6-docs`)
 
