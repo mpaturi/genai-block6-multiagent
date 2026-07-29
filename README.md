@@ -29,21 +29,24 @@ dispatch ──► clinical_node ──┐
 - **pytest** — TDD throughout; fakes for every external dependency, no live calls in the test suite
 - **GitHub Actions** — CI against a disposable Neo4j service container
 
-## Results (real, measured — Phase 5's actual CI-equivalent run)
+## Results (real, measured — Phase 7's actual CI-equivalent run, seed corrected)
 
 Run locally against a fresh, cold-start disposable Neo4j container, in the exact sequence CI uses (seed load → vocabulary check → `pytest` → eval harness), with `USE_RAG_FIXTURES=1 USE_STUB_ANSWER_FN=1` (no real Pinecone/Claude calls — see the cost caveat below):
 
 | Metric | Result |
 |---|---|
 | Recall (8 scored questions) | **1.000 (8/8)** |
-| q1 / q7 (previously top_k-capped) | **Both correct** against Phase 4's independently-verified exhaustive ground truth (25/25 patients each) |
+| q1 (previously top_k-capped; seed corrected in Phase 7) | **Correct** — `total_patients=99, drug_a_count=49, drug_b_count=28`, matching Phase 7's independently-verified exhaustive ground truth |
+| q7 (previously top_k-capped) | **Correct** against Phase 4's independently-verified exhaustive ground truth (25/25 patients) |
 | q9–q11 (deliberately-unanswerable controls) | **All pass** — zero patients correctly reported for all three |
 | Discrepancy check (8 scored questions) | **Pass** — no `discrepancy_flag=True` |
 | Degradation-matrix check | **Pass** — all 4 rows of the failure matrix produce the correct `mode` |
-| Latency (cold start; committed as the first baseline) | median **5047ms**, p95 **5282ms** |
+| Latency (cold start; baseline reset in Phase 7 — q1's much larger population changed real latency) | median **922ms**, p95 **1031ms** |
 | Cost / tokens | $0.0 / 0 tokens |
 
-**q1/q7, before vs. after:** under Block 5 alone, these two questions' true patient counts could never be verified beyond whatever RAG's `top_k=25` happened to retrieve — the reported count and the retrieval ceiling were the same number by construction, so "correct" was unfalsifiable. Block 6's Cohort Agent enumerates them exhaustively instead; for this seed data both true counts turn out to be exactly 25 (identical to Block 5's original numbers), but that's now an independently confirmed fact, not an assumption baked into the measurement.
+**q1, before vs. after — the real story, not the coincidence:** Phase 4's first pass at q1 found its true population was exactly 25 patients, identical to Block 5's original RAG-capped count — a correct result at the time, but it turned out to be an artifact of the CI seed itself: Block 5 later discovered (own repo, `phase-12-fix-q1-seed`) that this bucket had only ever been seeded with the exact 25 patients its RAG search returns, so the golden answer and the capped output could never have disagreed, no matter how large the true population really was. With the seed corrected to its true, exhaustive 99-patient population, the contrast is now real and demonstrated, not theoretical: **Block 5's own RAG search still returns only 25 of those 99 patients**, so Block 5 now fails this question's accuracy check permanently, by its own design. **Block 6's Cohort Agent enumerates all 99 directly from the graph**, reconciling to `mode="reconciled"`, `confidence="high"`, the correct 99/49/28 — this is the gap Block 6 exists to close, shown against real data rather than asserted from a seed too small to test it.
+
+**q7, before vs. after:** this one's true population genuinely is 25 — RAG's cap and reality coincide here, and that's still independently confirmed, not assumed.
 
 **Cost caveat:** the $0.0/0-token figures above reflect this CI configuration, where the answer-writing step is stubbed and never calls a real LLM — they are not a real production cost estimate. Separately, the underlying $/token rate this repo's logging inherits from Block 5 is not verified against Anthropic's current published pricing (see "What I'd do next" below) — treat any non-zero `cost_usd` this system reports as directional, not a budget number, until that's checked.
 
