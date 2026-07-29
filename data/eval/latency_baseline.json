@@ -1,4 +1,5 @@
 {
   "recall": 1.0,
-  "p95_latency_ms": 5282.0
+  "p95_latency_ms": 1031.0,
+  "note": "Reset in Phase 7, not a regression: q1's seed population grew from 25 to the true 99 patients (data/seed/ci_graph_seed.cypher corrected, mirroring Block 5's phase-12-fix-q1-seed). The prior baseline (recall=1.0, p95_latency_ms=5282.0, from Phase 5) is no longer comparable - a materially larger cohort for q1 changes real query/reconciliation latency, and this repo's regression gate has no way to distinguish 'latency changed because the workload changed' from 'latency changed because something got slower'. Treated as a fresh first-real-run baseline rather than compared against the stale one, same convention as when this file was first created."
 }
