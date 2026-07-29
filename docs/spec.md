@@ -12,8 +12,8 @@ Block 6 builds that fix as a second, distinct agent, and makes the *combination*
 
 ## 2. Roles
 
-**Role 1 — Clinical QA Agent (reused, unmodified).**
-Block 5's `run_agent(question, *, search_fn, count_fn, answer_fn) -> tuple[ClinicalAnswer, bool]`, imported as-is from the Block 5 package. Not edited in this repo. Its value: RAG-grounded patient identification (`rag_patient_ids`) plus a verified drug-count breakdown (`graph_result`), capped at `top_k=25`.
+**Role 1 — Clinical QA Agent (reused, never edited in this repo).**
+Block 5's `run_agent(question, *, search_fn, count_fn, answer_fn) -> tuple[ClinicalAnswer, bool, dict]`, imported as-is from the Block 5 package. The third return value, `cost_info` (`{"cost_usd", "input_tokens", "output_tokens"}`), was added in Block 5's own repo (its `phase-11-expose-cost` branch) during Block 6's Phase 5 — a real interface change, made where §8 says interface changes belong, not a modification made here. This repo threads it through as `MultiAgentState.clinical_cost_info` for `scripts/run_log.py`. Its value: RAG-grounded patient identification (`rag_patient_ids`) plus a verified drug-count breakdown (`graph_result`), capped at `top_k=25`.
 
 **`Citation.snippet`'s data source:** `ClinicalAnswer` exposes `rag_citations: list[dict]`, each entry `{"patient_id": int, "chunk_id": ..., "snippet": str}`, built by `scripts/schemas.py::build_rag_citations()` and populated in `rag_tool.py::search_patients()` from Block 4's per-source `chunk_text`. This is Block 6's `Citation.snippet` data source — see §3.
 
@@ -102,7 +102,7 @@ This is the graceful-degradation requirement from the assignment, made concrete 
 
 ## 5. Dependencies
 
-- Block 5 (`genai-block5-agent`): `run_agent`, `ClinicalAnswer`, `QuestionInput`. Signatures and field lists match this spec's description exactly — `run_agent(question, *, search_fn=search_patients, count_fn=count_drugs, answer_fn=_default_answer_fn) -> tuple[ClinicalAnswer, bool]`, `top_k=25`, confidence tiers `low <15 / medium 15–24 / high ≥25`. `ClinicalAnswer.rag_citations` backs `Citation.snippet` — see Role 1's note above. Block 5's interface has changed several times over its own history — confidence tiers recalibrated twice, `outcome` added late, `top_k` raised from 20 to 25 — so this contract is not assumed permanently frozen; re-confirm it if Block 5 is touched again in the future.
+- Block 5 (`genai-block5-agent`): `run_agent`, `ClinicalAnswer`, `QuestionInput`. Signatures and field lists match this spec's description exactly — `run_agent(question, *, search_fn=search_patients, count_fn=count_drugs, answer_fn=_default_answer_fn) -> tuple[ClinicalAnswer, bool, dict]`, `top_k=25`, confidence tiers `low <15 / medium 15–24 / high ≥25`. `ClinicalAnswer.rag_citations` backs `Citation.snippet` — see Role 1's note above. Block 5's interface has changed several times over its own history — confidence tiers recalibrated twice, `outcome` added late, `top_k` raised from 20 to 25, a third `cost_info` return value added during Block 6's Phase 5 — so this contract is not assumed permanently frozen; re-confirm it if Block 5 is touched again in the future.
 - Block 4 (`genai-block4-rag-eval`): called transitively via Block 5's `search_fn`, not directly by this repo. `SEARCH_TIMEOUT_SECONDS = 10` (`retrieve.py:69`) and `GENERATE_TIMEOUT_SECONDS = 10` (`generate.py:31`); both wrapped in one `except Exception` in `api.py`'s `/query` handler that returns a generic 502. `/query`'s response `sources` entries include `chunk_text` (`api.py:145`), which Block 5's `build_rag_citations()` depends on for `Citation.snippet`.
 - Block 5's own outbound HTTP client to Block 4's `/query`: `rag_tool.py:60` sets `requests.post(..., timeout=10)` — tighter than Block 4's internal 10s+10s ceiling, not looser, since the client aborts at 10s regardless of what Block 4 might still be doing server-side. See `docs/plan.md` §7 for the worst-case math this produces.
 - Block 3 (`genai-block3-graph-kb`): Neo4j instance/schema the Cohort Agent queries directly via Cypher. `HAS_CONDITION`/`PRESCRIBED` relationship names and `condition_name` property (`query_graph.py`); `NEO4J_URI`/`NEO4J_USER`/`NEO4J_PASSWORD`/`NEO4J_DATABASE` env-var convention (`check_connection.py`). Driver setup and relationship-name conventions are reusable (see §2).
@@ -128,7 +128,7 @@ This is the graceful-degradation requirement from the assignment, made concrete 
 ## 7. Acceptance Criteria (done = all true)
 
 - ≥2 agents with distinct roles (RAG-grounded Clinical QA Agent; unbounded structured Cohort Enumeration Agent) coordinate via a LangGraph orchestrator to complete a task neither does alone (exhaustive + cited cohort answer).
-- Block 5's `run_agent` is reused unmodified as one role.
+- Block 5's `run_agent` is reused as one role, never reimplemented or forked in this repo — its one interface change to date (adding `cost_info`, §2) was made in Block 5's own repo, per §8's rule that interface changes belong there, not worked around here.
 - State is explicit (`MultiAgentState` TypedDict) and inspectable (full state visible in trace at every node transition).
 - System degrades gracefully per the matrix in §4 when either agent fails — verified by eval tests with injected failures, never raises.
 - Traced and evaluated as in Block 5: LangSmith tracing, CI eval suite, cost/token logging, regression gate.
