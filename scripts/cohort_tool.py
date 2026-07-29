@@ -17,6 +17,8 @@ import os
 from dotenv import load_dotenv
 from neo4j import GraphDatabase, Query
 
+from scripts.error_classification import classify_exception
+
 load_dotenv()
 
 NEO4J_URI = os.environ.get("NEO4J_URI", "bolt://localhost:7687")
@@ -39,6 +41,12 @@ _LAB_PROPERTY = {
 # reaching into the private _LAB_PROPERTY mapping directly.
 KNOWN_LAB_NAMES = set(_LAB_PROPERTY.keys())
 _COMPARISON_OP = {"above": ">", "below": "<"}
+
+# classify_exception's four kinds, split into what's actually worth
+# retrying: a real infra hiccup (timeout/connection_error) might clear up
+# on a second attempt, but "validation_error"/"unknown" mean either bad
+# input or a genuine bug - retrying 3 times just delays the same failure.
+_RETRYABLE_ERROR_KINDS = {"timeout", "connection_error"}
 
 # The unbounded enumeration query - condition/value are Cypher
 # $parameters, never string-interpolated. lab_property/op are filled in
@@ -116,7 +124,12 @@ def query_full_cohort(
             ).single()
             matched_ids = list(row["matched_ids"])
     except Exception as exc:
-        raise CohortServiceError(type(exc).__name__)
+        # Preserve the real error message (not just the exception's type
+        # name) so it reaches the final caveat text, and only mark this
+        # retryable when classify_exception says it's a real infra issue -
+        # never for a bug or bad input, which retrying can't fix.
+        error_kind = classify_exception(exc)
+        raise CohortServiceError(str(exc), retryable=error_kind in _RETRYABLE_ERROR_KINDS)
 
     return {"patient_ids": matched_ids}
 
@@ -149,7 +162,12 @@ def count_drugs_exhaustive(
             )
             drug_counts = {row["drug"]: row["patient_count"] for row in rows}
     except Exception as exc:
-        raise CohortServiceError(type(exc).__name__)
+        # Preserve the real error message (not just the exception's type
+        # name) so it reaches the final caveat text, and only mark this
+        # retryable when classify_exception says it's a real infra issue -
+        # never for a bug or bad input, which retrying can't fix.
+        error_kind = classify_exception(exc)
+        raise CohortServiceError(str(exc), retryable=error_kind in _RETRYABLE_ERROR_KINDS)
 
     return {
         "drug_a_count": drug_counts.get(drug_a, 0),

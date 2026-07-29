@@ -26,6 +26,7 @@ return a full drug->count mapping the way Block 5's count_drugs does.
 """
 from scripts.cohort_agent import _MAX_TOOL_RETRIES, run_cohort_agent
 from scripts.cohort_tool import CohortServiceError
+from scripts.error_classification import classify_exception
 from block5_agent.schemas import QuestionInput
 
 QUESTION = QuestionInput(
@@ -160,6 +161,26 @@ def test_never_raises_even_on_a_non_retryable_error_on_every_call():
     # If run_cohort_agent ever let this propagate, pytest would fail this
     # test with an uncaught exception rather than a normal assertion
     # failure - the call below itself is the "never raises" assertion.
+    result = run_cohort_agent(QUESTION, graph_query_fn=graph_query_fn, count_fn=count_fn)
+
+    assert graph_query_fn.call_count == 1
+    assert result.outcome == "tool_error"
+
+
+def test_never_raises_on_an_unknown_classified_error_single_attempt():
+    # Phase 8: scripts/cohort_tool.py now derives `retryable` from
+    # classify_exception rather than always defaulting to True - an
+    # "unknown"-classified exception (a real bug, not transient infra;
+    # distinct from the invalid_lab_or_comparison bad-input case above)
+    # must also fail fast, not retry 3 times before giving up.
+    unclassified_exc = RuntimeError("unexpected bug")
+    assert classify_exception(unclassified_exc) == "unknown"
+
+    graph_query_fn = _CountingFake(
+        _always_raise(CohortServiceError(str(unclassified_exc), retryable=False))
+    )
+    count_fn = _CountingFake(_never_called("count_fn"))
+
     result = run_cohort_agent(QUESTION, graph_query_fn=graph_query_fn, count_fn=count_fn)
 
     assert graph_query_fn.call_count == 1

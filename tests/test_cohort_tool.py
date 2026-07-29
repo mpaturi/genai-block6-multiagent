@@ -1,8 +1,12 @@
-"""Tests for scripts/cohort_tool.py's Cypher query text (see docs/spec.md §2).
+"""Tests for scripts/cohort_tool.py's Cypher query text (see docs/spec.md §2)
+and its exception-handling behavior (Phase 8 hardening).
 
 TDD: written before scripts/cohort_tool.py exists - these fail with an
-ImportError until Phase 3. Static string-inspection only, per docs/tasks.md
-Phase 2 - no live Neo4j connection, no driver, no fakes even.
+ImportError until Phase 3. The query-text tests are static string-
+inspection only, per docs/tasks.md Phase 2 - no live Neo4j connection, no
+driver, no fakes even. Phase 8 adds fake-driver tests below covering
+query_full_cohort/count_drugs_exhaustive's real exception-wrapping
+behavior, which had no test coverage at all until now.
 
 Pins two module-level constants Phase 3 must define, per docs/plan.md §2's
 file layout comment ("Cypher query text, exhaustive count query") and
@@ -26,7 +30,13 @@ import inspect
 import re
 
 from scripts import cohort_tool
-from scripts.cohort_tool import EXHAUSTIVE_DRUG_COUNT_QUERY, FULL_COHORT_QUERY_TEMPLATE
+from scripts.cohort_tool import (
+    EXHAUSTIVE_DRUG_COUNT_QUERY,
+    FULL_COHORT_QUERY_TEMPLATE,
+    CohortServiceError,
+    count_drugs_exhaustive,
+    query_full_cohort,
+)
 
 _FORBIDDEN_WRITE_KEYWORDS = ["CREATE", "MERGE", "DELETE", "SET"]
 # The exact field names spec.md §2 says must never be string-interpolated
@@ -99,3 +109,97 @@ def test_module_source_never_builds_a_query_by_interpolating_the_protected_field
         assert not re.search(rf"\.format\([^)]*\b{field}\s*=", source), (
             f".format({field}=...) found in scripts/cohort_tool.py's source"
         )
+
+
+# --- exception-handling behavior (Phase 8 hardening) -----------------------
+
+
+class _FakeResult:
+    def __init__(self, single_value=None, rows=None):
+        self._single_value = single_value
+        self._rows = rows or []
+
+    def single(self):
+        return self._single_value
+
+    def __iter__(self):
+        return iter(self._rows)
+
+
+class _FakeSession:
+    def __init__(self, raise_exc=None, single_value=None, rows=None):
+        self._raise_exc = raise_exc
+        self._single_value = single_value
+        self._rows = rows
+
+    def run(self, query, **params):
+        if self._raise_exc is not None:
+            raise self._raise_exc
+        return _FakeResult(single_value=self._single_value, rows=self._rows)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+
+class _FakeDriver:
+    def __init__(self, raise_exc=None, single_value=None, rows=None):
+        self._raise_exc = raise_exc
+        self._single_value = single_value
+        self._rows = rows
+
+    def session(self, database=None):
+        return _FakeSession(
+            raise_exc=self._raise_exc, single_value=self._single_value, rows=self._rows
+        )
+
+
+def test_query_full_cohort_wraps_a_connection_error_as_retryable_with_the_real_message():
+    driver = _FakeDriver(raise_exc=ConnectionError("connection refused"))
+
+    try:
+        query_full_cohort("Essential hypertension", "SBP", "above", 140, driver=driver)
+        assert False, "expected CohortServiceError"
+    except CohortServiceError as exc:
+        # The real message reaches the caveat text, not just the
+        # exception's type name.
+        assert exc.detail == "connection refused"
+        assert exc.retryable is True
+
+
+def test_query_full_cohort_wraps_an_unknown_exception_as_non_retryable():
+    driver = _FakeDriver(raise_exc=RuntimeError("unexpected bug"))
+
+    try:
+        query_full_cohort("Essential hypertension", "SBP", "above", 140, driver=driver)
+        assert False, "expected CohortServiceError"
+    except CohortServiceError as exc:
+        assert exc.detail == "unexpected bug"
+        # classify_exception has no case for a bare RuntimeError - it's
+        # "unknown", meaning a real bug or bad input, not transient infra.
+        # Retrying 3 times wouldn't fix it, so this must not be retryable.
+        assert exc.retryable is False
+
+
+def test_count_drugs_exhaustive_wraps_a_connection_error_as_retryable_with_the_real_message():
+    driver = _FakeDriver(raise_exc=ConnectionError("connection refused"))
+
+    try:
+        count_drugs_exhaustive([1, 2, 3], "Lisinopril", "Amlodipine", driver=driver)
+        assert False, "expected CohortServiceError"
+    except CohortServiceError as exc:
+        assert exc.detail == "connection refused"
+        assert exc.retryable is True
+
+
+def test_count_drugs_exhaustive_wraps_an_unknown_exception_as_non_retryable():
+    driver = _FakeDriver(raise_exc=RuntimeError("unexpected bug"))
+
+    try:
+        count_drugs_exhaustive([1, 2, 3], "Lisinopril", "Amlodipine", driver=driver)
+        assert False, "expected CohortServiceError"
+    except CohortServiceError as exc:
+        assert exc.detail == "unexpected bug"
+        assert exc.retryable is False
