@@ -147,6 +147,11 @@ activemq-data/
 # SageMath parsed files
 *.sage.py
 
+# Generated eval run log (scripts/run_log.py, docs/plan.md §9) - one line
+# per run_multi_agent invocation, not source code, same convention as
+# Block 5's data/logs/.
+data/eval/run_log.jsonl
+
 # Environments
 .env
 .envrc
