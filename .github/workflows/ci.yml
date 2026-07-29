@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # Matches the Neo4j version Block 3 runs locally (see
+    # genai-block3-graph-kb/docker-compose.yml). scripts/load_ci_graph_seed.py
+    # retries until this is actually ready, rather than relying on a
+    # Docker healthcheck here.
+    services:
+      neo4j:
+        image: neo4j:5.18-community
+        env:
+          NEO4J_AUTH: neo4j/ci_test_password
+        ports:
+          - 7687:7687
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Load CI graph seed
+        env:
+          NEO4J_URI: bolt://localhost:7687
+          NEO4J_USER: neo4j
+          NEO4J_PASSWORD: ci_test_password
+          NEO4J_DATABASE: neo4j
+        run: python -m scripts.load_ci_graph_seed
+
+      # Fail fast, before the (slower) test suite and eval harness run -
+      # a vocabulary mismatch here means every downstream check is
+      # working from a stale assumption about Block 3's graph.
+      - name: Vocabulary check
+        env:
+          NEO4J_URI: bolt://localhost:7687
+          NEO4J_USER: neo4j
+          NEO4J_PASSWORD: ci_test_password
+          NEO4J_DATABASE: neo4j
+        run: python -m scripts.vocabulary_check
+
+      - name: Run tests
+        run: python -m pytest
+
+      # USE_RAG_FIXTURES replays block5_agent's recorded RAG responses
+      # instead of calling the live RAG service, which CI has no access
+      # to. USE_STUB_ANSWER_FN swaps in a fixed placeholder instead of a
+      # real Claude call for the answer-writing step - this repo's own
+      # scoring in scripts/run_eval.py reads total_patients/drug_a_count/
+      # drug_b_count, never the free-text answer's content, so the scored
+      # eval doesn't need a real model call. count_fn always stays real -
+      # the graph is the seed loaded above. With both search and
+      # answer-writing stubbed, this step never touches the real Claude
+      # API, so no ANTHROPIC_API_KEY secret is needed here.
+      # LANGCHAIN_TRACING_V2 is deliberately left unset: tracing isn't
+      # part of the correctness gate, and this avoids needing a second
+      # secret.
+      - name: Run evaluation
+        env:
+          USE_RAG_FIXTURES: "1"
+          USE_STUB_ANSWER_FN: "1"
+          NEO4J_URI: bolt://localhost:7687
+          NEO4J_USER: neo4j
+          NEO4J_PASSWORD: ci_test_password
+          NEO4J_DATABASE: neo4j
+        run: python -m scripts.run_eval
