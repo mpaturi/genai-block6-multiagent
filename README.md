@@ -29,21 +29,28 @@ dispatch ──► clinical_node ──┐
 - **pytest** — TDD throughout; fakes for every external dependency, no live calls in the test suite
 - **GitHub Actions** — CI against a disposable Neo4j service container
 
-## Results (real, measured — Phase 5's actual CI-equivalent run)
+## Results (real, measured — Phase 5's actual CI-equivalent run, including its post-review followups)
 
 Run locally against a fresh, cold-start disposable Neo4j container, in the exact sequence CI uses (seed load → vocabulary check → `pytest` → eval harness), with `USE_RAG_FIXTURES=1 USE_STUB_ANSWER_FN=1` (no real Pinecone/Claude calls — see the cost caveat below):
 
 | Metric | Result |
 |---|---|
-| Recall (8 scored questions) | **1.000 (8/8)** |
+| Recall (9 scored questions) | **1.000 (9/9)** |
 | q1 / q7 (previously top_k-capped) | **Both correct** against Phase 4's independently-verified exhaustive ground truth (25/25 patients each) |
+| q12 (new — see below) | **Correct** — 30/15/5, independently re-verified by hand against the extended seed |
 | q9–q11 (deliberately-unanswerable controls) | **All pass** — zero patients correctly reported for all three |
-| Discrepancy check (8 scored questions) | **Pass** — no `discrepancy_flag=True` |
+| Discrepancy check (9 scored questions) | **Pass** — no `discrepancy_flag=True` |
 | Degradation-matrix check | **Pass** — all 4 rows of the failure matrix produce the correct `mode` |
-| Latency (cold start; committed as the first baseline) | median **5047ms**, p95 **5282ms** |
+| Latency (post-fix; `data/eval/latency_baseline.json`) | median **898.5ms**, p95 **953.0ms** |
 | Cost / tokens | $0.0 / 0 tokens |
 
 **q1/q7, before vs. after:** under Block 5 alone, these two questions' true patient counts could never be verified beyond whatever RAG's `top_k=25` happened to retrieve — the reported count and the retrieval ceiling were the same number by construction, so "correct" was unfalsifiable. Block 6's Cohort Agent enumerates them exhaustively instead; for this seed data both true counts turn out to be exactly 25 (identical to Block 5's original numbers), but that's now an independently confirmed fact, not an assumption baked into the measurement.
+
+**q12 — closing a real coverage gap a PR review caught:** q1 and q7 both sit *exactly* at the old 25-patient boundary, so neither actually exercises the `total_patients_matched > 25` reconciliation path against a real, non-zero drug count — and no combination in Block 5's original 11-question set does either (the one cohort that can exceed 25, 26 patients, turns out to have essentially no real prescriptions in it). Rather than leave that gap or fabricate ground truth, `data/seed/ci_graph_seed.cypher` was deliberately extended with an isolated 30-patient cohort (new condition, new patient IDs, existing Drug nodes only — no other question's data touched), independently re-verified by hand the same way as q1/q7: `total_patients_matched=30, drug_a_count=15, drug_b_count=5`.
+
+**Latency, corrected:** the originally-committed baseline (median 5047ms, p95 5282ms) included two distortions since fixed — a degradation-matrix log-dilution bug (the eval harness's synthetic fake-driven runs were mixing their near-instant timings into the same stats as the real question runs) and normal cold-start/machine variance. The number above is the current, corrected measurement.
+
+**Dependency note:** `requirements.txt` briefly pinned `block5_agent` to a Block 5 review branch (`phase-11-expose-cost`) while its `cost_info`-exposing change was in review; that PR has since merged to Block 5's `main` and the pin has been flipped back to `@main`, matching this repo's own convention of never routing around another block's interfaces.
 
 **Cost caveat:** the $0.0/0-token figures above reflect this CI configuration, where the answer-writing step is stubbed and never calls a real LLM — they are not a real production cost estimate. Separately, the underlying $/token rate this repo's logging inherits from Block 5 is not verified against Anthropic's current published pricing (see "What I'd do next" below) — treat any non-zero `cost_usd` this system reports as directional, not a budget number, until that's checked.
 
