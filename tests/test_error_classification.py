@@ -21,7 +21,7 @@ import asyncio
 
 import httpx
 import pytest
-from neo4j.exceptions import ServiceUnavailable
+from neo4j.exceptions import Neo4jError, ServiceUnavailable, SessionExpired, TransientError
 from pydantic import BaseModel, ValidationError
 
 from scripts.error_classification import classify_exception
@@ -37,6 +37,14 @@ def _make_validation_error() -> ValidationError:
     except ValidationError as exc:
         return exc
     raise AssertionError("expected a ValidationError")
+
+
+def _make_client_error(code: str, message: str = "boom"):
+    # Neo4jError._hydrate_neo4j is the driver's own real construction path
+    # (used internally when the server returns an error) - this builds a
+    # real ClientError/TransientError/etc instance with a real .code, not
+    # a hand-rolled duck-typed fake.
+    return Neo4jError._hydrate_neo4j(code=code, message=message)
 
 
 def test_asyncio_timeout_error_classifies_as_timeout():
@@ -63,6 +71,40 @@ def test_httpx_connect_error_classifies_as_connection_error():
 
 def test_pydantic_validation_error_classifies_as_validation_error():
     assert classify_exception(_make_validation_error()) == "validation_error"
+
+
+def test_client_error_with_transaction_timed_out_code_classifies_as_timeout():
+    # A real Query(timeout=...) expiring server-side surfaces as this
+    # specific ClientError code, not a ServiceUnavailable - the driver
+    # only raises ServiceUnavailable for transport-level failures, so a
+    # server-enforced query/transaction timeout needs its own check
+    # (Leone's PR #8 regression finding).
+    exc = _make_client_error(
+        "Neo.ClientError.Transaction.TransactionTimedOut",
+        "The transaction has been terminated",
+    )
+    assert classify_exception(exc) == "timeout"
+
+
+def test_client_error_with_an_unrelated_code_classifies_as_unknown():
+    # Not every ClientError is a timeout - only the specific code above
+    # is. A syntax error, for instance, is a real bug, not a transient
+    # failure worth retrying.
+    exc = _make_client_error("Neo.ClientError.Statement.SyntaxError", "bad cypher")
+    assert classify_exception(exc) == "unknown"
+
+
+def test_transient_error_classifies_as_timeout():
+    # A transient database condition (leader switch, deadlock, momentarily
+    # unavailable) - retrying later plausibly helps, same bucket as timeout.
+    assert classify_exception(TransientError("deadlock detected")) == "timeout"
+
+
+def test_session_expired_classifies_as_connection_error():
+    # The session itself is no longer usable - a fresh session/connection
+    # is what's needed, not a retry of the same one, so this is a
+    # connection problem, not a timeout.
+    assert classify_exception(SessionExpired("session no longer usable")) == "connection_error"
 
 
 def test_unrelated_exception_classifies_as_unknown():

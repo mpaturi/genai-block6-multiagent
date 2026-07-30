@@ -35,6 +35,7 @@ import inspect
 import re
 
 import pytest
+from neo4j.exceptions import Neo4jError
 
 from scripts import cohort_tool
 from scripts.cohort_tool import (
@@ -197,6 +198,27 @@ def test_query_full_cohort_wraps_an_unknown_exception_as_non_retryable():
         # "unknown", meaning a real bug or bad input, not transient infra.
         # Retrying 3 times wouldn't fix it, so this must not be retryable.
         assert exc.retryable is False
+
+
+def test_query_full_cohort_wraps_a_real_transaction_timeout_as_retryable():
+    # Regression test for Leone's PR #8 finding: a real Query(timeout=...)
+    # expiring server-side raises a real neo4j ClientError carrying the
+    # Neo.ClientError.Transaction.TransactionTimedOut code - not a
+    # ServiceUnavailable, and not one of the generic ConnectionError/
+    # RuntimeError fakes the tests above already cover. Before
+    # classify_exception recognized this code, this exact scenario fell
+    # through to "unknown" and was wrongly marked non-retryable.
+    timeout_exc = Neo4jError._hydrate_neo4j(
+        code="Neo.ClientError.Transaction.TransactionTimedOut",
+        message="The transaction has been terminated",
+    )
+    driver = _FakeDriver(raise_exc=timeout_exc)
+
+    try:
+        query_full_cohort("Essential hypertension", "SBP", "above", 140, driver=driver)
+        assert False, "expected CohortServiceError"
+    except CohortServiceError as exc:
+        assert exc.retryable is True
 
 
 def test_count_drugs_exhaustive_wraps_a_connection_error_as_retryable_with_the_real_message():
