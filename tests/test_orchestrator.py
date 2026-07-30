@@ -216,6 +216,44 @@ def test_nothing_found_answered_split_reports_vocabulary_looks_consistent(monkey
     assert "unexplained" in result.caveat.lower() or "consistent" in result.caveat.lower()
 
 
+def test_answered_nothing_found_split_reports_confirmed_vocabulary_mismatch(monkeypatch):
+    # The mirror of test_nothing_found_answered_split_reports_confirmed_
+    # vocabulary_mismatch above: clinical answered (its own drug counts
+    # happen to be 0/0) while cohort's exhaustive enumeration found
+    # nothing at all. Without routing this to the same vocabulary-split
+    # handling, 0==0 numerically "matches" and this genuine asymmetric
+    # split would silently fall through to "both agree" instead.
+    monkeypatch.setattr(
+        orchestrator,
+        "get_known_vocabulary",
+        lambda: {"conditions": {"Essential hypertension"}, "labs": {"SBP"}},
+    )
+    clinical_fn = _fn((_clinical_answer([1, 2, 3], {}), True))
+    cohort_fn = _fn(_cohort_result(0, 0, 0, patient_ids=[], outcome="nothing_found"))
+
+    result = _run(clinical_fn, cohort_fn)
+
+    assert result.discrepancy_flag is True
+    assert result.confidence == "low"
+    assert "not present" in result.caveat.lower()
+
+
+def test_answered_nothing_found_split_reports_vocabulary_looks_consistent(monkeypatch):
+    monkeypatch.setattr(
+        orchestrator,
+        "get_known_vocabulary",
+        lambda: {"conditions": {"hypertension"}, "labs": {"SBP"}},
+    )
+    clinical_fn = _fn((_clinical_answer([1, 2, 3], {}), True))
+    cohort_fn = _fn(_cohort_result(0, 0, 0, patient_ids=[], outcome="nothing_found"))
+
+    result = _run(clinical_fn, cohort_fn)
+
+    assert result.discrepancy_flag is True
+    assert result.confidence == "low"
+    assert "unexplained" in result.caveat.lower() or "consistent" in result.caveat.lower()
+
+
 def test_clinical_count_step_ran_false_is_not_treated_as_a_zero_count(monkeypatch):
     # count_step_ran=False (Role 1 short-circuited before counting) must
     # route to the same "no comparable count" handling as the

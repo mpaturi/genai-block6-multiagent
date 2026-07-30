@@ -428,6 +428,12 @@ def reconcile_node(state: MultiAgentState) -> dict:
             reconciliation, final_answer = _both_nothing_found_answer(question)
         elif no_comparable_clinical_count and cohort_result.outcome == "answered":
             reconciliation, final_answer = _vocabulary_split_answer(question, cohort_result)
+        elif clinical_result.outcome == "answered" and cohort_result.outcome == "nothing_found":
+            # The mirror of the case just above: clinical answered while
+            # cohort's exhaustive enumeration found nothing at all - a
+            # genuine asymmetric split, not "both agree" just because both
+            # sides' drug counts happen to be 0 (docs/spec.md §3).
+            reconciliation, final_answer = _vocabulary_split_answer(question, cohort_result)
         else:
             reconciliation, final_answer = _both_answered_reconciled_answer(
                 question, clinical_result, cohort_result
