@@ -270,14 +270,17 @@ def _count_existing_log_lines() -> int:
     return sum(1 for _ in LOG_PATH.open(encoding="utf-8"))
 
 
-def _read_new_log_entries(start_line_count: int) -> list[dict]:
-    """Only the lines this run's own invocations appended - not any
+def _read_log_entries_between(start_line_count: int, end_line_count: int) -> list[dict]:
+    """Only the 11 real question runs' own log lines - excludes both any
     entries pytest (or a previous eval run) already wrote to the same
-    append-only file earlier in this CI job."""
+    append-only file earlier in this CI job (before start_line_count),
+    and the degradation-matrix eval dimension's later synthetic
+    fake-driven entries (after end_line_count), which are near-instant
+    and would otherwise dilute the latency/cost baseline."""
     if not LOG_PATH.exists():
         return []
     lines = LOG_PATH.read_text(encoding="utf-8").splitlines()
-    return [json.loads(line) for line in lines[start_line_count:]]
+    return [json.loads(line) for line in lines[start_line_count:end_line_count]]
 
 
 def _compute_latency_cost_stats(entries: list[dict]) -> dict:
@@ -383,8 +386,12 @@ async def run_evaluation() -> int:
 
     log_start = _count_existing_log_lines()
     results = await _run_all_questions(questions, clinical_agent_fn)
+    # Captured here, before the degradation-matrix dimension below runs
+    # its own fake-driven invocations and appends its own log entries -
+    # only the 11 real runs' lines fall within [log_start, log_end).
+    log_end_of_real_runs = _count_existing_log_lines()
     degradation_result = await _check_degradation_matrix()
-    new_entries = _read_new_log_entries(log_start)
+    new_entries = _read_log_entries_between(log_start, log_end_of_real_runs)
     stats = _compute_latency_cost_stats(new_entries)
 
     recall_result = _score_answerable_questions(questions, answer_key, results)
