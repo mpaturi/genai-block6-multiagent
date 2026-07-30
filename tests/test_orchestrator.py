@@ -237,7 +237,7 @@ def test_answered_nothing_found_split_reports_confirmed_vocabulary_mismatch(monk
         "get_known_vocabulary",
         lambda: {"conditions": {"Essential hypertension"}, "labs": {"SBP"}},
     )
-    clinical_fn = _fn((_clinical_answer([1, 2, 3], {}), True))
+    clinical_fn = _fn((_clinical_answer([1, 2, 3], {}), True, _DUMMY_COST_INFO))
     cohort_fn = _fn(_cohort_result(0, 0, 0, patient_ids=[], outcome="nothing_found"))
 
     result = _run(clinical_fn, cohort_fn)
@@ -253,7 +253,7 @@ def test_answered_nothing_found_split_reports_vocabulary_looks_consistent(monkey
         "get_known_vocabulary",
         lambda: {"conditions": {"hypertension"}, "labs": {"SBP"}},
     )
-    clinical_fn = _fn((_clinical_answer([1, 2, 3], {}), True))
+    clinical_fn = _fn((_clinical_answer([1, 2, 3], {}), True, _DUMMY_COST_INFO))
     cohort_fn = _fn(_cohort_result(0, 0, 0, patient_ids=[], outcome="nothing_found"))
 
     result = _run(clinical_fn, cohort_fn)
@@ -448,7 +448,7 @@ def test_reconcile_node_wraps_a_real_vocabulary_check_failure_and_degrades_grace
 
     monkeypatch.setattr(vocabulary_check, "get_driver", _raising_get_driver)
 
-    clinical_fn = _fn((_clinical_answer([], {}, outcome="nothing_found"), False))
+    clinical_fn = _fn((_clinical_answer([], {}, outcome="nothing_found"), False, _DUMMY_COST_INFO))
     cohort_fn = _fn(_cohort_result(12, 8, 4))
 
     # If reconcile_node ever let this propagate, the call below itself
