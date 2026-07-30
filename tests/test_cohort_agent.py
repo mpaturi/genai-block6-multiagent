@@ -176,6 +176,24 @@ def test_count_step_broken_after_retries_exhausted_returns_tool_error():
     assert result.caveat is not None
 
 
+def test_never_raises_when_graph_query_fn_raises_a_non_cohort_service_error():
+    # A bug outside run_cohort_agent's own documented CohortServiceError
+    # contract (e.g. a fake or a real tool raising something else
+    # entirely) must still be caught and folded into the same retry/
+    # tool_error handling - the "never raises" contract has to hold
+    # standalone, not only when the orchestrator's outer node wrapper
+    # happens to be there to catch it too.
+    graph_query_fn = _CountingFake(_always_raise(RuntimeError("unexpected bug")))
+    count_fn = _CountingFake(_never_called("count_fn"))
+
+    result = run_cohort_agent(QUESTION, graph_query_fn=graph_query_fn, count_fn=count_fn)
+
+    assert graph_query_fn.call_count == _MAX_TOOL_RETRIES + 1
+    assert count_fn.call_count == 0
+    assert result.outcome == "tool_error"
+    assert result.caveat is not None
+
+
 def test_never_raises_even_on_a_non_retryable_error_on_every_call():
     # retryable=False (bad input, mirroring Block 5's invalid_person_id/
     # invalid_lab_or_comparison precedent) must fail fast without
