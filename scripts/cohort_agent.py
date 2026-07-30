@@ -22,14 +22,23 @@ def _call_with_retries(fn, *args):
     (None, last_error_detail) once retries are exhausted or a
     non-retryable error is hit (bad input never gets retried, since
     trying again won't fix it).
+
+    Catches any exception, not just CohortServiceError - anything else
+    (a bug outside fn's own documented contract) is converted into one
+    first, same as scripts/cohort_tool.py's own catch-all conversion, so
+    this "never raises" contract holds on its own, not only when the
+    orchestrator's outer node wrapper happens to also be there to catch it.
     """
     last_error_detail = None
     for _attempt in range(_MAX_TOOL_RETRIES + 1):
         try:
             return fn(*args), None
-        except CohortServiceError as exc:
-            last_error_detail = exc.detail
-            if not exc.retryable:
+        except Exception as exc:
+            service_error = exc if isinstance(exc, CohortServiceError) else CohortServiceError(
+                type(exc).__name__
+            )
+            last_error_detail = service_error.detail
+            if not service_error.retryable:
                 return None, last_error_detail
     return None, last_error_detail
 

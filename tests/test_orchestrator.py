@@ -225,6 +225,44 @@ def test_nothing_found_answered_split_reports_vocabulary_looks_consistent(monkey
     assert "unexplained" in result.caveat.lower() or "consistent" in result.caveat.lower()
 
 
+def test_answered_nothing_found_split_reports_confirmed_vocabulary_mismatch(monkeypatch):
+    # The mirror of test_nothing_found_answered_split_reports_confirmed_
+    # vocabulary_mismatch above: clinical answered (its own drug counts
+    # happen to be 0/0) while cohort's exhaustive enumeration found
+    # nothing at all. Without routing this to the same vocabulary-split
+    # handling, 0==0 numerically "matches" and this genuine asymmetric
+    # split would silently fall through to "both agree" instead.
+    monkeypatch.setattr(
+        orchestrator,
+        "get_known_vocabulary",
+        lambda: {"conditions": {"Essential hypertension"}, "labs": {"SBP"}},
+    )
+    clinical_fn = _fn((_clinical_answer([1, 2, 3], {}), True))
+    cohort_fn = _fn(_cohort_result(0, 0, 0, patient_ids=[], outcome="nothing_found"))
+
+    result = _run(clinical_fn, cohort_fn)
+
+    assert result.discrepancy_flag is True
+    assert result.confidence == "low"
+    assert "not present" in result.caveat.lower()
+
+
+def test_answered_nothing_found_split_reports_vocabulary_looks_consistent(monkeypatch):
+    monkeypatch.setattr(
+        orchestrator,
+        "get_known_vocabulary",
+        lambda: {"conditions": {"hypertension"}, "labs": {"SBP"}},
+    )
+    clinical_fn = _fn((_clinical_answer([1, 2, 3], {}), True))
+    cohort_fn = _fn(_cohort_result(0, 0, 0, patient_ids=[], outcome="nothing_found"))
+
+    result = _run(clinical_fn, cohort_fn)
+
+    assert result.discrepancy_flag is True
+    assert result.confidence == "low"
+    assert "unexplained" in result.caveat.lower() or "consistent" in result.caveat.lower()
+
+
 def test_clinical_count_step_ran_false_is_not_treated_as_a_zero_count(monkeypatch):
     # count_step_ran=False (Role 1 short-circuited before counting) must
     # route to the same "no comparable count" handling as the
@@ -387,6 +425,39 @@ def test_out_of_contract_exception_is_caught_by_node_wrapper_and_degrades_gracef
 
     assert result.mode == "cohort_only_degraded"
     assert result.confidence == "high"
+
+
+def test_reconcile_node_wraps_a_real_vocabulary_check_failure_and_degrades_gracefully(monkeypatch):
+    # Unlike the split tests above, this does NOT monkeypatch
+    # get_known_vocabulary itself away - that would avoid exercising the
+    # real failure this test exists to cover. Only get_driver is faked
+    # (the lowest boundary that can't use a live Neo4j connection in this
+    # test suite), so reconcile_node's own reconciliation logic,
+    # _vocabulary_split_answer, and the real get_known_vocabulary/
+    # _fetch_known_vocabulary all run for real and hit a real exception -
+    # reconcile_node's wrapper (mirroring clinical_node/cohort_node's own
+    # try/except, plan.md §5) must catch it and degrade rather than
+    # letting the graph invocation crash.
+    from scripts import vocabulary_check
+
+    monkeypatch.setattr(vocabulary_check, "_cached_vocabulary", None)
+    monkeypatch.setattr(vocabulary_check, "_cached_at", 0.0)
+
+    def _raising_get_driver():
+        raise RuntimeError("cannot connect to Neo4j")
+
+    monkeypatch.setattr(vocabulary_check, "get_driver", _raising_get_driver)
+
+    clinical_fn = _fn((_clinical_answer([], {}, outcome="nothing_found"), False))
+    cohort_fn = _fn(_cohort_result(12, 8, 4))
+
+    # If reconcile_node ever let this propagate, the call below itself
+    # would fail with an uncaught exception rather than a normal
+    # assertion failure.
+    result = _run(clinical_fn, cohort_fn)
+
+    assert result.mode == "both_failed"
+    assert result.confidence == "low"
 
 
 def test_sync_entry_point_delegates_to_the_async_implementation():
