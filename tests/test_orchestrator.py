@@ -349,6 +349,39 @@ def test_out_of_contract_exception_is_caught_by_node_wrapper_and_degrades_gracef
     assert result.confidence == "high"
 
 
+def test_reconcile_node_wraps_a_real_vocabulary_check_failure_and_degrades_gracefully(monkeypatch):
+    # Unlike the split tests above, this does NOT monkeypatch
+    # get_known_vocabulary itself away - that would avoid exercising the
+    # real failure this test exists to cover. Only get_driver is faked
+    # (the lowest boundary that can't use a live Neo4j connection in this
+    # test suite), so reconcile_node's own reconciliation logic,
+    # _vocabulary_split_answer, and the real get_known_vocabulary/
+    # _fetch_known_vocabulary all run for real and hit a real exception -
+    # reconcile_node's wrapper (mirroring clinical_node/cohort_node's own
+    # try/except, plan.md §5) must catch it and degrade rather than
+    # letting the graph invocation crash.
+    from scripts import vocabulary_check
+
+    monkeypatch.setattr(vocabulary_check, "_cached_vocabulary", None)
+    monkeypatch.setattr(vocabulary_check, "_cached_at", 0.0)
+
+    def _raising_get_driver():
+        raise RuntimeError("cannot connect to Neo4j")
+
+    monkeypatch.setattr(vocabulary_check, "get_driver", _raising_get_driver)
+
+    clinical_fn = _fn((_clinical_answer([], {}, outcome="nothing_found"), False))
+    cohort_fn = _fn(_cohort_result(12, 8, 4))
+
+    # If reconcile_node ever let this propagate, the call below itself
+    # would fail with an uncaught exception rather than a normal
+    # assertion failure.
+    result = _run(clinical_fn, cohort_fn)
+
+    assert result.mode == "both_failed"
+    assert result.confidence == "low"
+
+
 def test_sync_entry_point_delegates_to_the_async_implementation():
     clinical_fn = _fn((_clinical_answer([1, 2], {"Lisinopril": 1, "Amlodipine": 1}), True))
     cohort_fn = _fn(_cohort_result(2, 1, 1))

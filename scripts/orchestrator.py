@@ -249,6 +249,38 @@ def _vocabulary_split_answer(
     return reconciliation, final_answer
 
 
+def _reconcile_error_answer(
+    question: QuestionInput, exc: Exception
+) -> tuple[ReconciliationResult, MultiAgentAnswer]:
+    """Fallback when reconcile_node itself raises - e.g. _vocabulary_split_
+    answer's live get_known_vocabulary() Cypher call failing. Both branches
+    may well have succeeded; it's reconciling their results that failed,
+    but there's still no reliable answer to give, so this degrades into
+    the same mode="both_failed" territory a clinical_node/cohort_node
+    out-of-contract exception does (docs/plan.md §5), rather than letting
+    the graph invocation crash.
+    """
+    reconciliation = ReconciliationResult(
+        counts_match=False,
+        authoritative_source="neither",
+        discrepancy_flag=False,
+        notes=f"Reconciliation step failed ({classify_exception(exc)}): {exc}",
+    )
+    final_answer = MultiAgentAnswer(
+        question=assemble_question_text(question),
+        answer="The orchestrator was unable to reconcile the agents' results for this question.",
+        total_patients=0,
+        drug_a_count=0,
+        drug_b_count=0,
+        confidence="low",
+        mode="both_failed",
+        citations=[],
+        caveat=None,
+        discrepancy_flag=False,
+    )
+    return reconciliation, final_answer
+
+
 def _both_nothing_found_answer(question: QuestionInput) -> tuple[ReconciliationResult, MultiAgentAnswer]:
     reconciliation = ReconciliationResult(
         counts_match=True,
@@ -438,6 +470,17 @@ async def run_multi_agent_async(
     def dispatch(state: MultiAgentState) -> dict:
         return {}
 
+    def reconcile_node_safe(state: MultiAgentState) -> dict:
+        try:
+            return reconcile_node(state)
+        except Exception as exc:
+            # Same second line of defense as clinical_node/cohort_node
+            # (plan.md §5), extended to reconcile_node itself - this is
+            # what actually catches _vocabulary_split_answer's live
+            # get_known_vocabulary() Cypher call failing.
+            reconciliation, final_answer = _reconcile_error_answer(state["question"], exc)
+            return {"reconciliation": reconciliation, "final_answer": final_answer}
+
     # Built fresh per call (mirroring Block 5's run_agent) so each
     # invocation's clinical_agent_fn/cohort_agent_fn overrides are closed
     # over correctly - one dispatch node fans out to two branches, both
@@ -446,7 +489,7 @@ async def run_multi_agent_async(
     graph.add_node("dispatch", dispatch)
     graph.add_node("clinical", clinical_node)
     graph.add_node("cohort", cohort_node)
-    graph.add_node("reconcile", reconcile_node)
+    graph.add_node("reconcile", reconcile_node_safe)
     graph.set_entry_point("dispatch")
     graph.add_edge("dispatch", "clinical")
     graph.add_edge("dispatch", "cohort")
