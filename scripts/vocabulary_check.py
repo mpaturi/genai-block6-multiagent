@@ -18,7 +18,7 @@ import sys
 import time
 from pathlib import Path
 
-from scripts.cohort_tool import KNOWN_LAB_NAMES, NEO4J_DATABASE, get_driver
+from scripts.cohort_tool import LAB_PROPERTY_NAMES, NEO4J_DATABASE, get_driver
 
 # data/eval/questions.json, resolved relative to this file rather than the
 # current working directory, so this script runs the same whether it's
@@ -38,21 +38,43 @@ MATCH (c:Condition)
 RETURN DISTINCT c.condition_name AS condition_name
 """
 
+# Labs are stored as Patient node properties (latest_sbp, latest_bmi, ...),
+# not as their own nodes with a queryable "lab name" - so instead of a
+# DISTINCT node-property query like the one above, this asks the graph
+# which property keys actually exist on real Patient nodes.
+_DISTINCT_PATIENT_PROPERTY_KEYS_QUERY = """
+MATCH (p:Patient)
+UNWIND keys(p) AS property_key
+RETURN DISTINCT property_key
+"""
+
 
 def _fetch_known_vocabulary(*, driver=None) -> dict:
-    """Query Block 3's graph for its real, current condition names.
+    """Query Block 3's graph for its real, current condition names and
+    Patient-node property keys.
 
-    Lab names are this repo's own fixed whitelist (scripts/cohort_tool.py's
-    KNOWN_LAB_NAMES) rather than a graph query - labs are stored as Patient
-    node properties (latest_sbp, latest_bmi, ...), not as their own nodes
-    with a queryable "lab name", so the known-lab set is exactly the set
-    of lab names this repo's own Cypher already knows how to handle.
+    Labs are cross-referenced against the real graph the same way
+    conditions are, not just trusted from scripts/cohort_tool.py's own
+    LAB_PROPERTY_NAMES mapping - a lab name only counts as known here if
+    its mapped property (e.g. "SBP" -> latest_sbp) actually exists on a
+    Patient node right now. Trusting the mapping alone would miss a
+    real-world property rename in Block 3's graph entirely: the lab name
+    would still look "known", but every query using it would then
+    silently match zero patients, with no error anywhere to catch it.
     """
     driver = driver if driver is not None else get_driver()
     with driver.session(database=NEO4J_DATABASE) as session:
-        rows = session.run(_DISTINCT_CONDITION_NAMES_QUERY)
-        conditions = {row["condition_name"] for row in rows}
-    return {"conditions": conditions, "labs": set(KNOWN_LAB_NAMES)}
+        condition_rows = session.run(_DISTINCT_CONDITION_NAMES_QUERY)
+        conditions = {row["condition_name"] for row in condition_rows}
+        property_key_rows = session.run(_DISTINCT_PATIENT_PROPERTY_KEYS_QUERY)
+        real_property_keys = {row["property_key"] for row in property_key_rows}
+
+    known_labs = {
+        lab_name
+        for lab_name, property_name in LAB_PROPERTY_NAMES.items()
+        if property_name in real_property_keys
+    }
+    return {"conditions": conditions, "labs": known_labs}
 
 
 def get_known_vocabulary(*, driver=None) -> dict:
