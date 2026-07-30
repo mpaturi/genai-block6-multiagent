@@ -4,6 +4,11 @@ TDD: written before scripts/cohort_tool.py exists - these fail with an
 ImportError until Phase 3. Static string-inspection only, per docs/tasks.md
 Phase 2 - no live Neo4j connection, no driver, no fakes even.
 
+A Phase 3-followup section at the bottom of this file adds driver-injection
+fault tests for query_full_cohort/count_drugs_exhaustive (get_driver()
+faked via monkeypatch, never a real connection) - the rest of the file
+stays static-inspection-only as described above.
+
 Pins two module-level constants Phase 3 must define, per docs/plan.md §2's
 file layout comment ("Cypher query text, exhaustive count query") and
 spec.md §2's "one-clause edit of Block 5's VERIFY_PATIENTS_QUERY_TEMPLATE"
@@ -25,8 +30,16 @@ Security constraints under test (spec.md §2):
 import inspect
 import re
 
+import pytest
+
 from scripts import cohort_tool
-from scripts.cohort_tool import EXHAUSTIVE_DRUG_COUNT_QUERY, FULL_COHORT_QUERY_TEMPLATE
+from scripts.cohort_tool import (
+    EXHAUSTIVE_DRUG_COUNT_QUERY,
+    FULL_COHORT_QUERY_TEMPLATE,
+    CohortServiceError,
+    count_drugs_exhaustive,
+    query_full_cohort,
+)
 
 _FORBIDDEN_WRITE_KEYWORDS = ["CREATE", "MERGE", "DELETE", "SET"]
 # The exact field names spec.md §2 says must never be string-interpolated
@@ -99,3 +112,31 @@ def test_module_source_never_builds_a_query_by_interpolating_the_protected_field
         assert not re.search(rf"\.format\([^)]*\b{field}\s*=", source), (
             f".format({field}=...) found in scripts/cohort_tool.py's source"
         )
+
+
+# --- get_driver() failures must be caught, not raised raw ---------------
+
+
+def _raising_get_driver(exc):
+    def _fn():
+        raise exc
+
+    return _fn
+
+
+def test_query_full_cohort_wraps_a_get_driver_failure_as_cohort_service_error(monkeypatch):
+    # get_driver() must be called inside the try block, not before it - a
+    # connection failure at driver-construction time is exactly as much a
+    # tool failure as one during the query itself, and must degrade the
+    # same way (CohortServiceError), not propagate the raw exception.
+    monkeypatch.setattr(cohort_tool, "get_driver", _raising_get_driver(RuntimeError("no db")))
+
+    with pytest.raises(CohortServiceError):
+        query_full_cohort("hypertension", "SBP", "above", 140)
+
+
+def test_count_drugs_exhaustive_wraps_a_get_driver_failure_as_cohort_service_error(monkeypatch):
+    monkeypatch.setattr(cohort_tool, "get_driver", _raising_get_driver(RuntimeError("no db")))
+
+    with pytest.raises(CohortServiceError):
+        count_drugs_exhaustive([1, 2, 3], "Lisinopril", "Amlodipine")

@@ -1,17 +1,23 @@
-"""Runs the full 11-question eval set through run_multi_agent_async and
+"""Runs the full 12-question eval set through run_multi_agent_async and
 scores it (see docs/spec.md §6, docs/plan.md §9/§13/§14).
 
-The 8 answerable questions (q1-q8) are scored for recall against
+The 9 answerable questions (q1-q8, q12) are scored for recall against
 data/eval/answer_key.json's total_patients/drug_a_count/drug_b_count.
 The 3 deliberately-unanswerable control questions (q9-q11) are scored
 separately, pass/fail, on whether the system correctly reports zero
 matching patients - never folded into the recall percentage. Any
-discrepancy_flag=True on the 8 scored questions fails the build, naming
+discrepancy_flag=True on a scored question fails the build, naming
 the question ID(s). A degradation-matrix dimension (fakes, no live calls)
 asserts every row of spec.md §4's matrix still produces the correct
 mode. A regression gate compares this run's recall and p95 latency
 against data/eval/latency_baseline.json, writing that baseline file on
 its first-ever real run.
+
+Question/scored counts above are not hardcoded anywhere in the logic
+below - every count derives from data/eval/questions.json's actual
+contents (via "answerable", defaulting true) and answer_key.json, so
+adding another question later doesn't require updating this file's own
+assumptions about how many there are.
 """
 import asyncio
 import json
@@ -96,11 +102,12 @@ def _question_input(entry: dict) -> QuestionInput:
     )
 
 
-# --- running the 11 questions ---------------------------------------------
+# --- running all the questions ---------------------------------------------
 
 
 async def _run_all_questions(questions: list[dict], clinical_agent_fn) -> dict:
-    """Runs all 11 questions concurrently via asyncio.gather.
+    """Runs every question in data/eval/questions.json concurrently via
+    asyncio.gather.
 
     Safe specifically under this CI configuration: with USE_RAG_FIXTURES
     and USE_STUB_ANSWER_FN both set, Role 1 makes zero real external
@@ -108,10 +115,11 @@ async def _run_all_questions(questions: list[dict], clinical_agent_fn) -> dict:
     count_fn is real but hits Neo4j, not a rate-limited API) and Role 2
     only ever hits the local disposable Neo4j container this same CI job
     started - so docs/plan.md §13's real-external-API rate-limit concern
-    (up to 22 simultaneous Pinecone/Claude calls if all 11 questions ran
-    concurrently against real services) does not apply here. A future run
-    against the real search service/LLM would need to revisit this
-    decision, not assume it still holds.
+    (up to 2 calls per question if every question ran concurrently
+    against real services - 24 simultaneous Pinecone/Claude calls for
+    today's 12-question set) does not apply here. A future run against
+    the real search service/LLM would need to revisit this decision, not
+    assume it still holds.
     """
     coroutines = [
         run_multi_agent_async(_question_input(q), clinical_agent_fn=clinical_agent_fn)
@@ -125,8 +133,9 @@ async def _run_all_questions(questions: list[dict], clinical_agent_fn) -> dict:
 
 
 def _score_answerable_questions(questions: list[dict], answer_key: dict, results: dict) -> dict:
-    """Recall over the 8 answerable questions - exact match on
-    total_patients/drug_a_count/drug_b_count against the ground truth.
+    """Recall over every answerable question (currently 9: q1-q8, q12) -
+    exact match on total_patients/drug_a_count/drug_b_count against the
+    ground truth.
     """
     scored = []
     discrepancy_ids = []
@@ -270,14 +279,17 @@ def _count_existing_log_lines() -> int:
     return sum(1 for _ in LOG_PATH.open(encoding="utf-8"))
 
 
-def _read_new_log_entries(start_line_count: int) -> list[dict]:
-    """Only the lines this run's own invocations appended - not any
+def _read_log_entries_between(start_line_count: int, end_line_count: int) -> list[dict]:
+    """Only the real question runs' own log lines - excludes both any
     entries pytest (or a previous eval run) already wrote to the same
-    append-only file earlier in this CI job."""
+    append-only file earlier in this CI job (before start_line_count),
+    and the degradation-matrix eval dimension's later synthetic
+    fake-driven entries (after end_line_count), which are near-instant
+    and would otherwise dilute the latency/cost baseline."""
     if not LOG_PATH.exists():
         return []
     lines = LOG_PATH.read_text(encoding="utf-8").splitlines()
-    return [json.loads(line) for line in lines[start_line_count:]]
+    return [json.loads(line) for line in lines[start_line_count:end_line_count]]
 
 
 def _compute_latency_cost_stats(entries: list[dict]) -> dict:
@@ -340,7 +352,7 @@ def _print_report(
     regression: dict,
 ) -> None:
     print(
-        f"Recall (8 scored questions): {recall_result['recall']:.3f} "
+        f"Recall ({recall_result['total']} scored questions): {recall_result['recall']:.3f} "
         f"({recall_result['correct_count']}/{recall_result['total']})"
     )
     for s in recall_result["scored"]:
@@ -350,7 +362,10 @@ def _print_report(
     for c in unanswerable_result["checks"]:
         print(f"  - {c['id']}: {'PASS' if c['passed'] else 'FAIL'}")
 
-    print(f"\nDiscrepancy check (8 scored questions): {'FAIL' if recall_result['discrepancy_ids'] else 'PASS'}")
+    print(
+        f"\nDiscrepancy check ({recall_result['total']} scored questions): "
+        f"{'FAIL' if recall_result['discrepancy_ids'] else 'PASS'}"
+    )
     if recall_result["discrepancy_ids"]:
         print(f"  discrepancy_flag=True on: {', '.join(recall_result['discrepancy_ids'])}")
 
@@ -383,8 +398,12 @@ async def run_evaluation() -> int:
 
     log_start = _count_existing_log_lines()
     results = await _run_all_questions(questions, clinical_agent_fn)
+    # Captured here, before the degradation-matrix dimension below runs
+    # its own fake-driven invocations and appends its own log entries -
+    # only the real question runs' lines fall within [log_start, log_end).
+    log_end_of_real_runs = _count_existing_log_lines()
     degradation_result = await _check_degradation_matrix()
-    new_entries = _read_new_log_entries(log_start)
+    new_entries = _read_log_entries_between(log_start, log_end_of_real_runs)
     stats = _compute_latency_cost_stats(new_entries)
 
     recall_result = _score_answerable_questions(questions, answer_key, results)
