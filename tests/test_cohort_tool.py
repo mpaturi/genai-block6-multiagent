@@ -201,7 +201,7 @@ def test_query_full_cohort_wraps_an_unknown_exception_as_non_retryable():
 
 
 def test_query_full_cohort_wraps_a_real_transaction_timeout_as_retryable():
-    # Regression test for Leone's PR #8 finding: a real Query(timeout=...)
+    # Regression test for a PR #8 review's finding: a real Query(timeout=...)
     # expiring server-side raises a real neo4j ClientError carrying the
     # Neo.ClientError.Transaction.TransactionTimedOut code - not a
     # ServiceUnavailable, and not one of the generic ConnectionError/

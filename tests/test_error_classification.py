@@ -78,7 +78,7 @@ def test_client_error_with_transaction_timed_out_code_classifies_as_timeout():
     # specific ClientError code, not a ServiceUnavailable - the driver
     # only raises ServiceUnavailable for transport-level failures, so a
     # server-enforced query/transaction timeout needs its own check
-    # (Leone's PR #8 regression finding).
+    # (a PR #8 review's regression finding).
     exc = _make_client_error(
         "Neo.ClientError.Transaction.TransactionTimedOut",
         "The transaction has been terminated",

@@ -24,7 +24,7 @@ _TIMEOUT_MESSAGE_KEYWORDS = ["timed out", "timeout"]
 # The one ClientError code this classifier treats as a timeout - a real
 # Query(timeout=...) expiring server-side surfaces as this specific code,
 # not a ServiceUnavailable (the driver only raises ServiceUnavailable for
-# transport-level failures) - Leone's PR #8 regression finding.
+# transport-level failures) - a PR #8 review's regression finding.
 _CLIENT_ERROR_TIMEOUT_CODE = "Neo.ClientError.Transaction.TransactionTimedOut"
 
 
