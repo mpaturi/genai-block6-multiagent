@@ -108,5 +108,15 @@
     "value": 13,
     "drug_a": "Furosemide",
     "drug_b": "Lisinopril"
+  },
+  {
+    "id": "q12",
+    "answerable": true,
+    "condition": "Chronic kidney disease",
+    "lab": "Glucose",
+    "comparison": "above",
+    "value": 140,
+    "drug_a": "Amlodipine",
+    "drug_b": "Warfarin"
   }
 ]

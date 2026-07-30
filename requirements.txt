@@ -1,8 +1,4 @@
-# PROVISIONAL: pinned to Block 5's phase-11-expose-cost review branch, not
-# main - run_agent's new 3-value return (adds cost_info) hasn't merged to
-# Block 5's main yet (see genai-block5-agent PR #12). Flip this back to
-# @main once that PR is approved and merged.
-block5_agent @ git+https://github.com/mpaturi/genai-block5-agent.git@phase-11-expose-cost
+block5_agent @ git+https://github.com/mpaturi/genai-block5-agent.git@main
 langgraph==1.2.9
 langsmith==0.10.6
 anthropic==0.116.0

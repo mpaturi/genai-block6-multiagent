@@ -8,6 +8,11 @@ driver, no fakes even. Phase 8 adds fake-driver tests below covering
 query_full_cohort/count_drugs_exhaustive's real exception-wrapping
 behavior, which had no test coverage at all until now.
 
+A Phase 3-followup section at the bottom of this file adds driver-injection
+fault tests for query_full_cohort/count_drugs_exhaustive (get_driver()
+faked via monkeypatch, never a real connection) - the rest of the file
+stays static-inspection-only as described above.
+
 Pins two module-level constants Phase 3 must define, per docs/plan.md §2's
 file layout comment ("Cypher query text, exhaustive count query") and
 spec.md §2's "one-clause edit of Block 5's VERIFY_PATIENTS_QUERY_TEMPLATE"
@@ -28,6 +33,9 @@ Security constraints under test (spec.md §2):
 """
 import inspect
 import re
+
+import pytest
+from neo4j.exceptions import Neo4jError
 
 from scripts import cohort_tool
 from scripts.cohort_tool import (
@@ -192,6 +200,27 @@ def test_query_full_cohort_wraps_an_unknown_exception_as_non_retryable():
         assert exc.retryable is False
 
 
+def test_query_full_cohort_wraps_a_real_transaction_timeout_as_retryable():
+    # Regression test for a PR #8 review's finding: a real Query(timeout=...)
+    # expiring server-side raises a real neo4j ClientError carrying the
+    # Neo.ClientError.Transaction.TransactionTimedOut code - not a
+    # ServiceUnavailable, and not one of the generic ConnectionError/
+    # RuntimeError fakes the tests above already cover. Before
+    # classify_exception recognized this code, this exact scenario fell
+    # through to "unknown" and was wrongly marked non-retryable.
+    timeout_exc = Neo4jError._hydrate_neo4j(
+        code="Neo.ClientError.Transaction.TransactionTimedOut",
+        message="The transaction has been terminated",
+    )
+    driver = _FakeDriver(raise_exc=timeout_exc)
+
+    try:
+        query_full_cohort("Essential hypertension", "SBP", "above", 140, driver=driver)
+        assert False, "expected CohortServiceError"
+    except CohortServiceError as exc:
+        assert exc.retryable is True
+
+
 def test_count_drugs_exhaustive_wraps_a_connection_error_as_retryable_with_the_real_message():
     driver = _FakeDriver(raise_exc=ConnectionError("connection refused"))
 
@@ -249,3 +278,31 @@ def test_count_drugs_exhaustive_honors_a_graph_query_timeout_override():
     count_drugs_exhaustive([1], "Lisinopril", "Amlodipine", driver=driver, graph_query_timeout=3)
 
     assert driver.recorded_queries[0].timeout == 3
+
+
+# --- get_driver() failures must be caught, not raised raw ---------------
+
+
+def _raising_get_driver(exc):
+    def _fn():
+        raise exc
+
+    return _fn
+
+
+def test_query_full_cohort_wraps_a_get_driver_failure_as_cohort_service_error(monkeypatch):
+    # get_driver() must be called inside the try block, not before it - a
+    # connection failure at driver-construction time is exactly as much a
+    # tool failure as one during the query itself, and must degrade the
+    # same way (CohortServiceError), not propagate the raw exception.
+    monkeypatch.setattr(cohort_tool, "get_driver", _raising_get_driver(RuntimeError("no db")))
+
+    with pytest.raises(CohortServiceError):
+        query_full_cohort("hypertension", "SBP", "above", 140)
+
+
+def test_count_drugs_exhaustive_wraps_a_get_driver_failure_as_cohort_service_error(monkeypatch):
+    monkeypatch.setattr(cohort_tool, "get_driver", _raising_get_driver(RuntimeError("no db")))
+
+    with pytest.raises(CohortServiceError):
+        count_drugs_exhaustive([1, 2, 3], "Lisinopril", "Amlodipine")
