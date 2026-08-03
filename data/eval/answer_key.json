@@ -1,10 +1,10 @@
 {
   "q1": {
-    "total_patients_matched": 25,
-    "drug_a_count": 10,
-    "drug_b_count": 8,
-    "ground_truth_source": "verified_by_hand_phase4",
-    "note": "Flagged by Block 5 as top_k-capped (patients_checked==25). Independently re-run against data/seed/ci_graph_seed.cypher via the unbounded enumeration query (docs/plan.md §11) - the real, exhaustive population is exactly 25, identical to Block 5's original RAG-capped count. The cap happened not to lose any real matches for this seed; this number is now independently confirmed rather than assumed."
+    "total_patients_matched": 99,
+    "drug_a_count": 49,
+    "drug_b_count": 28,
+    "ground_truth_source": "verified_by_hand_phase7",
+    "note": "Corrected from Phase 4's original verification (25 = 25), which was accurate for the seed as it existed then but was later found too small to expose the real gap. data/seed/ci_graph_seed.cypher now carries the true, exhaustive 99-patient population (Essential hypertension, SBP > 140), mirrored from Block 5's own fix. Independently re-verified against Block 6's own loaded copy of the seed via the unbounded enumeration query, not assumed identical just because the source file was copied — 99 total, Lisinopril (drug_a) 49, Amlodipine (drug_b) 28."
   },
   "q2": {
     "total_patients_matched": 3,

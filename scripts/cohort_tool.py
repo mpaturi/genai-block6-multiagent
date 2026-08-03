@@ -17,6 +17,8 @@ import os
 from dotenv import load_dotenv
 from neo4j import GraphDatabase, Query
 
+from scripts.error_classification import classify_exception
+
 load_dotenv()
 
 NEO4J_URI = os.environ.get("NEO4J_URI", "bolt://localhost:7687")
@@ -42,6 +44,12 @@ _LAB_PROPERTY = {
 # own list of lab display names.
 LAB_PROPERTY_NAMES = dict(_LAB_PROPERTY)
 _COMPARISON_OP = {"above": ">", "below": "<"}
+
+# classify_exception's four kinds, split into what's actually worth
+# retrying: a real infra hiccup (timeout/connection_error) might clear up
+# on a second attempt, but "validation_error"/"unknown" mean either bad
+# input or a genuine bug - retrying 3 times just delays the same failure.
+_RETRYABLE_ERROR_KINDS = {"timeout", "connection_error"}
 
 # The unbounded enumeration query - condition/value are Cypher
 # $parameters, never string-interpolated. lab_property/op are filled in
@@ -99,9 +107,15 @@ def query_full_cohort(
     value: float,
     *,
     driver=None,
+    graph_query_timeout=None,
 ) -> dict:
     """Enumerate every patient matching condition/lab/comparison/value -
     no top_k ceiling. Returns {"patient_ids": [...]}.
+
+    graph_query_timeout overrides the module-level GRAPH_QUERY_TIMEOUT for
+    this call, same injectable pattern as `driver` - tests (or a future
+    caller that's found the default too tight/loose) can pass their own
+    without touching the module constant.
     """
     lab_property = _LAB_PROPERTY.get(lab)
     op = _COMPARISON_OP.get(comparison)
@@ -110,16 +124,22 @@ def query_full_cohort(
 
     try:
         driver = driver if driver is not None else get_driver()
+        timeout = graph_query_timeout if graph_query_timeout is not None else GRAPH_QUERY_TIMEOUT
         with driver.session(database=NEO4J_DATABASE) as session:
             query_text = FULL_COHORT_QUERY_TEMPLATE.format(lab_property=lab_property, op=op)
             row = session.run(
-                Query(query_text, timeout=GRAPH_QUERY_TIMEOUT),
+                Query(query_text, timeout=timeout),
                 condition=condition,
                 value=value,
             ).single()
             matched_ids = list(row["matched_ids"])
     except Exception as exc:
-        raise CohortServiceError(type(exc).__name__)
+        # Preserve the real error message (not just the exception's type
+        # name) so it reaches the final caveat text, and only mark this
+        # retryable when classify_exception says it's a real infra issue -
+        # never for a bug or bad input, which retrying can't fix.
+        error_kind = classify_exception(exc)
+        raise CohortServiceError(str(exc), retryable=error_kind in _RETRYABLE_ERROR_KINDS)
 
     return {"patient_ids": matched_ids}
 
@@ -130,9 +150,13 @@ def count_drugs_exhaustive(
     drug_b: str,
     *,
     driver=None,
+    graph_query_timeout=None,
 ) -> dict:
     """Count drug_a/drug_b over the full matched cohort - no top_k
     ceiling. Returns {"drug_a_count": int, "drug_b_count": int}.
+
+    graph_query_timeout overrides the module-level GRAPH_QUERY_TIMEOUT for
+    this call, same injectable pattern as `driver`.
     """
     if not patient_ids:
         # Nothing to count - return immediately without opening a session.
@@ -145,14 +169,20 @@ def count_drugs_exhaustive(
 
     try:
         driver = driver if driver is not None else get_driver()
+        timeout = graph_query_timeout if graph_query_timeout is not None else GRAPH_QUERY_TIMEOUT
         with driver.session(database=NEO4J_DATABASE) as session:
             rows = session.run(
-                Query(EXHAUSTIVE_DRUG_COUNT_QUERY, timeout=GRAPH_QUERY_TIMEOUT),
+                Query(EXHAUSTIVE_DRUG_COUNT_QUERY, timeout=timeout),
                 person_ids=patient_ids,
             )
             drug_counts = {row["drug"]: row["patient_count"] for row in rows}
     except Exception as exc:
-        raise CohortServiceError(type(exc).__name__)
+        # Preserve the real error message (not just the exception's type
+        # name) so it reaches the final caveat text, and only mark this
+        # retryable when classify_exception says it's a real infra issue -
+        # never for a bug or bad input, which retrying can't fix.
+        error_kind = classify_exception(exc)
+        raise CohortServiceError(str(exc), retryable=error_kind in _RETRYABLE_ERROR_KINDS)
 
     return {
         "drug_a_count": drug_counts.get(drug_a, 0),

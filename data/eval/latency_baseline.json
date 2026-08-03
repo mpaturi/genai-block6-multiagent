@@ -1,4 +1,5 @@
 {
   "recall": 1.0,
-  "p95_latency_ms": 953.0
+  "p95_latency_ms": 891.0,
+  "note": "Phase 7 merge: measured fresh against the fully-merged combined state (99-patient q1 population + q12's 30-patient cohort both present, 206 total patients) - neither this branch's pre-merge number (p95=1031.0) nor phase-6-docs's pre-merge number (p95=953.0) reflected that combined seed, so both were superseded rather than picked between. Median 882.5ms, p95 891.0ms, disposable fresh-container run, same USE_RAG_FIXTURES=1 USE_STUB_ANSWER_FN=1 CI configuration as every prior baseline. Consistent with every prior measurement's finding that latency here is not sensitive to a few dozen extra matching patients (see README.md's latency caveat) - this number is in the same range as Phase 5's corrected baseline and Phase 7's own A/B check, not a new regression."
 }

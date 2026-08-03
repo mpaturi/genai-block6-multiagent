@@ -26,6 +26,7 @@ return a full drug->count mapping the way Block 5's count_drugs does.
 """
 from scripts.cohort_agent import _MAX_TOOL_RETRIES, run_cohort_agent
 from scripts.cohort_tool import CohortServiceError
+from scripts.error_classification import classify_exception
 from block5_agent.schemas import QuestionInput
 
 QUESTION = QuestionInput(
@@ -60,6 +61,11 @@ def _always_raise(exc):
         raise exc
 
     return _fn
+
+
+def _no_sleep(seconds):
+    """A sleep_fn fake that does nothing - retry-exhaustion tests exercise
+    the real backoff logic without actually waiting it out."""
 
 
 def _never_called(name):
@@ -110,11 +116,33 @@ def test_nothing_found_short_circuits_count_step():
     assert result.outcome == "nothing_found"
 
 
+def test_retryable_failures_back_off_between_attempts_but_not_after_the_last_one():
+    # Phase 8: a short, real backoff between retries - recorded via a
+    # fake sleep_fn rather than actually waiting, so this test stays
+    # fast while still proving the delay values themselves are correct.
+    recorded_delays = []
+    graph_query_fn = _CountingFake(_always_raise(CohortServiceError("connection_error")))
+    count_fn = _CountingFake(_never_called("count_fn"))
+
+    run_cohort_agent(
+        QUESTION,
+        graph_query_fn=graph_query_fn,
+        count_fn=count_fn,
+        sleep_fn=lambda seconds: recorded_delays.append(seconds),
+    )
+
+    # 3 attempts total, so 2 backoff delays between them - none after the
+    # final, exhausted attempt (nothing left to wait for).
+    assert recorded_delays == [0.5, 1.0]
+
+
 def test_graph_query_broken_after_retries_exhausted_returns_tool_error():
     graph_query_fn = _CountingFake(_always_raise(CohortServiceError("connection_error")))
     count_fn = _CountingFake(_never_called("count_fn"))
 
-    result = run_cohort_agent(QUESTION, graph_query_fn=graph_query_fn, count_fn=count_fn)
+    result = run_cohort_agent(
+        QUESTION, graph_query_fn=graph_query_fn, count_fn=count_fn, sleep_fn=_no_sleep
+    )
 
     # _MAX_TOOL_RETRIES retries => _MAX_TOOL_RETRIES + 1 attempts total,
     # matching Block 5's agent.py:33 retry convention (spec.md §2).
@@ -134,7 +162,9 @@ def test_count_step_broken_after_retries_exhausted_returns_tool_error():
     )
     count_fn = _CountingFake(_always_raise(CohortServiceError("ServiceUnavailable")))
 
-    result = run_cohort_agent(QUESTION, graph_query_fn=graph_query_fn, count_fn=count_fn)
+    result = run_cohort_agent(
+        QUESTION, graph_query_fn=graph_query_fn, count_fn=count_fn, sleep_fn=_no_sleep
+    )
 
     assert graph_query_fn.call_count == 1
     assert count_fn.call_count == _MAX_TOOL_RETRIES + 1
@@ -178,6 +208,26 @@ def test_never_raises_even_on_a_non_retryable_error_on_every_call():
     # If run_cohort_agent ever let this propagate, pytest would fail this
     # test with an uncaught exception rather than a normal assertion
     # failure - the call below itself is the "never raises" assertion.
+    result = run_cohort_agent(QUESTION, graph_query_fn=graph_query_fn, count_fn=count_fn)
+
+    assert graph_query_fn.call_count == 1
+    assert result.outcome == "tool_error"
+
+
+def test_never_raises_on_an_unknown_classified_error_single_attempt():
+    # Phase 8: scripts/cohort_tool.py now derives `retryable` from
+    # classify_exception rather than always defaulting to True - an
+    # "unknown"-classified exception (a real bug, not transient infra;
+    # distinct from the invalid_lab_or_comparison bad-input case above)
+    # must also fail fast, not retry 3 times before giving up.
+    unclassified_exc = RuntimeError("unexpected bug")
+    assert classify_exception(unclassified_exc) == "unknown"
+
+    graph_query_fn = _CountingFake(
+        _always_raise(CohortServiceError(str(unclassified_exc), retryable=False))
+    )
+    count_fn = _CountingFake(_never_called("count_fn"))
+
     result = run_cohort_agent(QUESTION, graph_query_fn=graph_query_fn, count_fn=count_fn)
 
     assert graph_query_fn.call_count == 1

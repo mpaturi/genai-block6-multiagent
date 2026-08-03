@@ -4,7 +4,7 @@ Reads against `docs/spec.md`. Every "decide in plan.md" item spec.md left open g
 
 ## 1. Cohort Agent entry point
 
-Role 2's entry point returns `CohortResult` alone, not a `tuple[CohortResult, bool]`. Block 5's `run_agent(...) -> tuple[ClinicalAnswer, bool]` shape doesn't carry over: its second value (`count_step_ran`) reports whether Role 1's multi-step pipeline (search → count → synthesize) actually reached its count step — a meaningful signal for a multi-step pipeline. Role 2 has no equivalent structure; it's one combined enumerate-and-count Cypher call, not a pipeline with an optional sub-step to report on. A second boolean here would have no defined meaning.
+Role 2's entry point returns `CohortResult` alone, not a `tuple[CohortResult, bool]`. Block 5's `run_agent(...) -> tuple[ClinicalAnswer, bool]` shape doesn't carry over (as of Phase 5, Block 5's `run_agent` actually returns a third value too, `cost_info` — see spec.md §2/§5 — but that doesn't change this section's reasoning, which is only about the second value): its second value (`count_step_ran`) reports whether Role 1's multi-step pipeline (search → count → synthesize) actually reached its count step — a meaningful signal for a multi-step pipeline. Role 2 has no equivalent structure; it's one combined enumerate-and-count Cypher call, not a pipeline with an optional sub-step to report on. A second boolean here would have no defined meaning.
 
 ```python
 run_cohort_agent(question: QuestionInput, *, graph_query_fn=query_full_cohort, count_fn=count_drugs_exhaustive) -> CohortResult

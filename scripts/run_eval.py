@@ -120,6 +120,21 @@ async def _run_all_questions(questions: list[dict], clinical_agent_fn) -> dict:
     today's 12-question set) does not apply here. A future run against
     the real search service/LLM would need to revisit this decision, not
     assume it still holds.
+
+    Separate from the external-rate-limit question above: this is not
+    true 24-way parallelism even locally. Every branch call - both
+    agents, across all 12 questions, up to 24 total - ultimately runs
+    inside scripts/orchestrator.py's block6_executor, a single shared
+    ThreadPoolExecutor sized at 8 workers (docs/plan.md §4 - deliberately
+    small, since it was originally sized for one question's 2 branches
+    at a time, not a whole eval sweep's worth at once). With 24 calls
+    competing for 8 slots, most of them queue rather than run
+    simultaneously - asyncio.gather here means "all 12 questions are
+    in flight and making progress concurrently," not "24 Neo4j/agent
+    calls execute at the exact same instant." Not a bug - the thread
+    pool's own queuing is exactly what keeps this from overwhelming the
+    local Neo4j container - but worth naming so a future reader doesn't
+    assume more parallelism than actually happens.
     """
     coroutines = [
         run_multi_agent_async(_question_input(q), clinical_agent_fn=clinical_agent_fn)
