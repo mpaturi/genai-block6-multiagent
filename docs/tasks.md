@@ -19,15 +19,15 @@ Checklist form of `docs/plan.md`. Each phase = its own branch + PR, per project 
 
 Write failing tests first, against fakes — no live Neo4j/RAG/LLM calls in this phase.
 
-- [ ] `scripts/schemas.py`: define `CohortResult`, `ReconciliationResult`, `Citation`, `MultiAgentAnswer`, `MultiAgentState` (plan.md §2's file layout, spec.md §3's field lists)
-- [ ] `tests/test_schemas.py`: validate field types, especially `CohortResult.question: QuestionInput` vs `MultiAgentAnswer.question: str` (spec.md §3 — don't let these drift to the same type by accident)
-- [ ] `tests/test_cohort_agent.py`: fakes for `graph_query_fn`/`count_fn`, covering:
+- [x] `scripts/schemas.py`: define `CohortResult`, `ReconciliationResult`, `Citation`, `MultiAgentAnswer`, `MultiAgentState` (plan.md §2's file layout, spec.md §3's field lists)
+- [x] `tests/test_schemas.py`: validate field types, especially `CohortResult.question: QuestionInput` vs `MultiAgentAnswer.question: str` (spec.md §3 — don't let these drift to the same type by accident)
+- [x] `tests/test_cohort_agent.py`: fakes for `graph_query_fn`/`count_fn`, covering:
   - `outcome="answered"` happy path
   - `outcome="nothing_found"` (zero matches)
   - `outcome="tool_error"` after exhausting `_MAX_TOOL_RETRIES` retries (plan.md §7's 10s-per-attempt assumption, verified against fake timing, not real Neo4j)
   - never raises even when the fake raises on every attempt
-- [ ] `tests/test_cohort_tool.py`: assert the Cypher string is parameterized (no f-string/`.format()` interpolation of `condition`/`lab`/`drug_a`/`drug_b` into the query text itself) and contains only `MATCH`/`RETURN` (spec.md §2's security constraints) — a static string-inspection test, not a live DB test
-- [ ] `tests/test_orchestrator.py`: fakes for both `run_agent` and `run_cohort_agent`, covering every row of spec.md §4's degradation matrix and every bullet of §2's reconciliation rules:
+- [x] `tests/test_cohort_tool.py`: assert the Cypher string is parameterized (no f-string/`.format()` interpolation of `condition`/`lab`/`drug_a`/`drug_b` into the query text itself) and contains only `MATCH`/`RETURN` (spec.md §2's security constraints) — a static string-inspection test, not a live DB test
+- [x] `tests/test_orchestrator.py`: fakes for both `run_agent` and `run_cohort_agent`, covering every row of spec.md §4's degradation matrix and every bullet of §2's reconciliation rules:
   - both `answered`, `total_patients_matched <= 25`, counts match → `mode="reconciled"`, `confidence="high"` per plan.md §8's redefinition
   - both `answered`, `total_patients_matched > 25` → Role 2's counts authoritative, `mode="reconciled"`, `confidence="high"`
   - both `answered`, counts disagree despite `<= 25` → `confidence="low"`, `discrepancy_flag=True`, `authoritative_source="neither"` (plan.md §8's `low` tier)
@@ -38,11 +38,12 @@ Write failing tests first, against fakes — no live Neo4j/RAG/LLM calls in this
   - both `tool_error` → `mode="both_failed"`, `confidence="low"`, never raises
   - `clinical_count_step_ran=False` → treated as no comparable count, not a `0` (spec.md §3) — assert this explicitly, don't just assume it falls out of other logic
   - a fake that raises an exception outside the agents' own documented contract → caught by the node wrapper's own try/except (plan.md §5), classified via `classify_exception`, never crashes the graph
-- [ ] `tests/test_error_classification.py`: `classify_exception` maps each of the four exception categories from plan.md §5 correctly
-- [ ] `tests/test_orchestrator.py` — timeout-specific cases (plan.md §4's thread-leak note): assert a branch that exceeds the 150s ceiling reports `"timeout"` correctly via the dedicated `block6_executor`, and assert a late-arriving result from an already-timed-out call is logged as a warning rather than silently dropped
-- [ ] Session-scoped pytest fixture that calls `driver.close()` after the full test session (plan.md §6's teardown note) — confirm no lingering connections after a test run
-- [ ] Confirm all of the above fail for the right reason (no implementation exists yet) before moving to Phase 3
-- [ ] Push `phase-2-tdd`, open PR
+- [x] `tests/test_error_classification.py`: `classify_exception` maps each of the four exception categories from plan.md §5 correctly
+- [x] `tests/test_orchestrator.py` — timeout-specific cases (plan.md §4's thread-leak note): assert a branch that exceeds the 150s ceiling reports `"timeout"` correctly via the dedicated `block6_executor`, and assert a late-arriving result from an already-timed-out call is logged as a warning rather than silently dropped
+- [x] Session-scoped pytest fixture that calls `driver.close()` after the full test session (plan.md §6's teardown note) — confirm no lingering connections after a test run
+- [x] Confirm all of the above fail for the right reason (no implementation exists yet) before moving to Phase 3: `test_schemas.py` (22 tests) passes since `scripts/schemas.py` already exists; `test_cohort_agent.py`, `test_cohort_tool.py`, `test_error_classification.py`, and `test_orchestrator.py` each fail collection with a `ModuleNotFoundError`/`ImportError` naming the specific Phase 3 module still missing
+- [x] `requirements.txt` pins `block5_agent` as a git dependency against Block 5's `main` (now pip-installable per Block 5's own packaging PR #11, merged) — confirmed `pip install -r requirements.txt` pulls it in cleanly alongside this repo's own deps
+- [x] Push `phase-2-tdd`, open PR (PR #2, against `phase-1-spec`)
 
 ## Phase 3 — Implement (branch: `phase-3-implement`)
 
