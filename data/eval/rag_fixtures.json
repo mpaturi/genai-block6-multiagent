@@ -1,0 +1,696 @@
+{
+  "patients with Essential hypertension and SBP above 140": {
+    "answer": "# Patients with Essential Hypertension and SBP above 140 mmHg\n\nBased on the provided records, the following patients meet both criteria:\n\n1. Patient 7253 (person_id: 7253) - SBP 144 mmHg\n2. Patient 8737 (person_id: 8737) - SBP 143 mmHg\n3. Patient 6700 (person_id: 6700) - SBP 142 mmHg\n4. Patient 4191 (person_id: 4191) - SBP 143 mmHg\n5. Patient 11015 (person_id: 11015) - SBP 150 mmHg\n6. Patient 7459 (person_id: 7459) - SBP 145 mmHg\n7. Patient 8139 (person_id: 8139) - SBP 141 mmHg\n8. Patient 11504 (person_id: 11504) - SBP 144 mmHg\n9. Patient 3134 (person_id: 3134) - SBP 151 mmHg\n10. Patient 18 (person_id: 18) - SBP 142 mmHg\n11. Patient 5599 (person_id: 5599) - SBP 141 mmHg\n12. Patient 2132 (person_id: 2132) - SBP 141 mmHg\n13. Patient 6883 (person_id: 6883) - SBP 150 mmHg\n14. Patient 11258 (person_id: 11258) - SBP 144 mmHg\n15. Patient 7371 (person_id: 7371) - SBP 144 mmHg\n16. Patient 11171 (person_id: 11171) - SBP 148 mmHg\n17. Patient 2677 (person_id: 2677) - SBP 143 mmHg\n18. Patient 3691 (person_id: 3691) - SBP 142 mmHg\n19. Patient 5915 (person_id: 5915) - SBP 143 mmHg\n20. Patient 2003 (person_id: 2003) - SBP 147 mmHg\n21. Patient 11459 (person_id: 11459) - SBP 144 mmHg\n22. Patient 7685 (person_id: 7685) - SBP 145 mmHg\n23. Patient 10279 (person_id: 10279) - SBP 144 mmHg\n24. Patient 2268 (person_id: 2268) - SBP 166 mmHg\n25. Patient 8695 (person_id: 8695) - SBP 143 mmHg\n\n**Total: 25 patients** meet both criteria.",
+    "patient_ids": [
+      7253,
+      8737,
+      6700,
+      4191,
+      11015,
+      7459,
+      8139,
+      11504,
+      3134,
+      18,
+      5599,
+      2132,
+      6883,
+      11258,
+      7371,
+      11171,
+      2677,
+      3691,
+      5915,
+      2003,
+      11459,
+      7685,
+      10279,
+      2268,
+      8695
+    ],
+    "citations": [
+      {
+        "patient_id": 7253,
+        "chunk_id": "7253_chunk0",
+        "snippet": "Patient 7253, born in the 1980s, Male. Conditions: Essential hypertension. Drugs: none. Visits: 2. Latest labs: SBP 144 mmHg."
+      },
+      {
+        "patient_id": 8737,
+        "chunk_id": "8737_chunk0",
+        "snippet": "Patient 8737, born in the 1990s, Male. Conditions: Essential hypertension. Drugs: Amlodipine. Visits: 2. Latest labs: SBP 143 mmHg."
+      },
+      {
+        "patient_id": 6700,
+        "chunk_id": "6700_chunk0",
+        "snippet": "Patient 6700, born in the 1980s, Male. Conditions: Essential hypertension. Drugs: Lisinopril, Hydrochlorothiazide. Visits: 2. Latest labs: SBP 142 mmHg, BMI 29.3."
+      },
+      {
+        "patient_id": 4191,
+        "chunk_id": "4191_chunk0",
+        "snippet": "Patient 4191, born in the 1950s, Female. Conditions: Essential hypertension. Drugs: Hydrochlorothiazide. Visits: 2. Latest labs: SBP 143 mmHg, BMI 30.4."
+      },
+      {
+        "patient_id": 11015,
+        "chunk_id": "11015_chunk0",
+        "snippet": "Patient 11015, born in the 1980s, Female. Conditions: Essential hypertension. Drugs: Amlodipine. Visits: 2. Latest labs: SBP 150 mmHg, BMI 27.7."
+      },
+      {
+        "patient_id": 7459,
+        "chunk_id": "7459_chunk0",
+        "snippet": "Patient 7459, born in the 1960s, Male. Conditions: Essential hypertension. Drugs: Lisinopril, Amlodipine. Visits: 2. Latest labs: SBP 145 mmHg, BMI 30.2."
+      },
+      {
+        "patient_id": 8139,
+        "chunk_id": "8139_chunk0",
+        "snippet": "Patient 8139, born in the 1950s, Male. Conditions: Essential hypertension, Anemia. Drugs: Amlodipine. Visits: 2. Latest labs: HbA1c 6.4%, Glucose 96.7 mg/dL, SBP 141 mmHg, BMI 27.5."
+      },
+      {
+        "patient_id": 11504,
+        "chunk_id": "11504_chunk0",
+        "snippet": "Patient 11504, born in the 1950s, Male. Conditions: Essential hypertension, Hyperlipidemia. Drugs: Lisinopril, Hydrochlorothiazide. Visits: 2. Latest labs: Glucose 64.5 mg/dL, SBP 144 mmHg, BMI 27.4."
+      },
+      {
+        "patient_id": 3134,
+        "chunk_id": "3134_chunk0",
+        "snippet": "Patient 3134, born in the 1960s, Male. Conditions: Anemia, Essential hypertension. Drugs: none. Visits: 2. Latest labs: SBP 151 mmHg."
+      },
+      {
+        "patient_id": 18,
+        "chunk_id": "18_chunk0",
+        "snippet": "Patient 18, born in the 1980s, Female. Conditions: Essential hypertension. Drugs: Lisinopril. Visits: 2. Latest labs: SBP 142 mmHg, BMI 29.7."
+      },
+      {
+        "patient_id": 5599,
+        "chunk_id": "5599_chunk0",
+        "snippet": "Patient 5599, born in the 1980s, Male. Conditions: Essential hypertension. Drugs: Hydrochlorothiazide. Visits: 2. Latest labs: HbA1c 6%, Glucose 91.2 mg/dL, SBP 141 mmHg, BMI 27.8."
+      },
+      {
+        "patient_id": 2132,
+        "chunk_id": "2132_chunk0",
+        "snippet": "Patient 2132, born in the 1980s, Female. Conditions: Essential hypertension. Drugs: Lisinopril. Visits: 2. Latest labs: SBP 141 mmHg, BMI 27.3."
+      },
+      {
+        "patient_id": 6883,
+        "chunk_id": "6883_chunk0",
+        "snippet": "Patient 6883, born in the 1980s, Male. Conditions: Essential hypertension. Drugs: Lisinopril. Visits: 2. Latest labs: SBP 150 mmHg, BMI 30.1."
+      },
+      {
+        "patient_id": 11258,
+        "chunk_id": "11258_chunk0",
+        "snippet": "Patient 11258, born in the 1980s, Male. Conditions: Anemia, Essential hypertension. Drugs: Amlodipine. Visits: 2. Latest labs: HbA1c 6.4%, Glucose 89.6 mg/dL, SBP 144 mmHg, BMI 27.7."
+      },
+      {
+        "patient_id": 7371,
+        "chunk_id": "7371_chunk0",
+        "snippet": "Patient 7371, born in the 1960s, Female. Conditions: Essential hypertension. Drugs: Hydrochlorothiazide, Lisinopril. Visits: 2. Latest labs: Glucose 94.5 mg/dL, SBP 144 mmHg, BMI 28.3."
+      },
+      {
+        "patient_id": 11171,
+        "chunk_id": "11171_chunk0",
+        "snippet": "Patient 11171, born in the 1960s, Female. Conditions: Essential hypertension. Drugs: Hydrochlorothiazide. Visits: 2. Latest labs: SBP 148 mmHg, BMI 28.1."
+      },
+      {
+        "patient_id": 2677,
+        "chunk_id": "2677_chunk0",
+        "snippet": "Patient 2677, born in the 1980s, Female. Conditions: Essential hypertension. Drugs: none. Visits: 2. Latest labs: SBP 143 mmHg."
+      },
+      {
+        "patient_id": 3691,
+        "chunk_id": "3691_chunk0",
+        "snippet": "Patient 3691, born in the 1970s, Male. Conditions: Essential hypertension. Drugs: Hydrochlorothiazide, Amlodipine. Visits: 2. Latest labs: SBP 142 mmHg, BMI 28."
+      },
+      {
+        "patient_id": 5915,
+        "chunk_id": "5915_chunk0",
+        "snippet": "Patient 5915, born in the 1990s, Male. Conditions: Essential hypertension. Drugs: Amlodipine. Visits: 2. Latest labs: Glucose 94.2 mg/dL, SBP 143 mmHg, BMI 29.1."
+      },
+      {
+        "patient_id": 2003,
+        "chunk_id": "2003_chunk0",
+        "snippet": "Patient 2003, born in the 1980s, Male. Conditions: Essential hypertension. Drugs: Hydrochlorothiazide. Visits: 2. Latest labs: SBP 147 mmHg, BMI 40.1."
+      },
+      {
+        "patient_id": 11459,
+        "chunk_id": "11459_chunk0",
+        "snippet": "Patient 11459, born in the 1970s, Male. Conditions: Anemia, Essential hypertension. Drugs: Hydrochlorothiazide. Visits: 2. Latest labs: HbA1c 6.3%, Glucose 97.1 mg/dL, SBP 144 mmHg, BMI 28.5."
+      },
+      {
+        "patient_id": 7685,
+        "chunk_id": "7685_chunk0",
+        "snippet": "Patient 7685, born in the 1970s, Male. Conditions: Anemia, Essential hypertension. Drugs: Lisinopril. Visits: 2. Latest labs: HbA1c 6.1%, Glucose 99.9 mg/dL, SBP 145 mmHg, BMI 27.5."
+      },
+      {
+        "patient_id": 10279,
+        "chunk_id": "10279_chunk0",
+        "snippet": "Patient 10279, born in the 1980s, Male. Conditions: Essential hypertension. Drugs: Hydrochlorothiazide. Visits: 2. Latest labs: SBP 144 mmHg, BMI 30.1."
+      },
+      {
+        "patient_id": 2268,
+        "chunk_id": "2268_chunk0",
+        "snippet": "Patient 2268, born in the 2000s, Male. Conditions: Essential hypertension. Drugs: Hydrochlorothiazide, Lisinopril, Amlodipine. Visits: 2. Latest labs: SBP 166 mmHg, BMI 25.3."
+      },
+      {
+        "patient_id": 8695,
+        "chunk_id": "8695_chunk0",
+        "snippet": "Patient 8695, born in the 1960s, Male. Conditions: Hyperlipidemia, Essential hypertension. Drugs: Lisinopril. Visits: 2. Latest labs: Glucose 86.2 mg/dL, SBP 143 mmHg, BMI 28.9."
+      }
+    ],
+    "retrieved_count": 25
+  },
+  "patients with Osteoporosis and BMI below 22": {
+    "answer": "Based on the patient records provided, the patients with Osteoporosis and BMI below 22 are:\n\n1. **Patient 10328** (person_id: 10328) - Has Osteoporosis with BMI of 17.2\n2. **Patient 2116** (person_id: 2116) - Has Osteoporosis with BMI of 20.3\n\nPatient 1563 (person_id: 1563) has Osteoporosis but no BMI value is provided in the excerpts, so I cannot confirm whether their BMI is below 22.",
+    "patient_ids": [
+      10328,
+      2116,
+      1563
+    ],
+    "citations": [
+      {
+        "patient_id": 10328,
+        "chunk_id": "10328_chunk0",
+        "snippet": "Patient 10328, born in the 2010s, Female. Conditions: Osteoporosis. Drugs: none. Visits: 2. Latest labs: SBP 134 mmHg, BMI 17.2."
+      },
+      {
+        "patient_id": 2116,
+        "chunk_id": "2116_chunk0",
+        "snippet": "Patient 2116, born in the 1950s, Male. Conditions: Osteoporosis, Streptococcal pharyngitis, Anemia, Urinary tract infection. Drugs: Alendronic acid, Ciprofloxacin. Visits: 2."
+      },
+      {
+        "patient_id": 1563,
+        "chunk_id": "1563_chunk0",
+        "snippet": "Patient 1563, born in the 1950s, Female. Conditions: Anemia, Osteoarthritis, Osteoporosis, Essential hypertension. Drugs: Hydrochlorothiazide, Lisinopril, Alendronic acid, Amlodipine, Insulin."
+      }
+    ],
+    "retrieved_count": 4
+  },
+  "patients with Pulmonary embolism and SBP below 100": {
+    "answer": "# Patients with Pulmonary Embolism and SBP below 100\n\nBased on the provided excerpts, the following patients have both pulmonary embolism and systolic blood pressure (SBP) below 100 mmHg:\n\n1. **Patient 3805** (person_id: 3805) - SBP 87 mmHg\n2. **Patient 933** (person_id: 933) - SBP 98 mmHg\n3. **Patient 7281** (person_id: 7281) - SBP 94 mmHg\n4. **Patient 6593** (person_id: 6593) - SBP 82 mmHg\n5. **Patient 7795** (person_id: 7795) - SBP 87 mmHg\n\nNote: Patient 10605 has pulmonary embolism with SBP 98 mmHg, which meets the criteria, but I should note that Patient 10605 was born in the 2000s (much younger than the others). Patient 3776 and Patient 2480 have pulmonary embolism but SBP of 99 and 98 mmHg respectively, which are at the threshold but both are below 100.\n\n**Corrected complete list of patients with PE and SBP < 100:**\n1. Patient 3805 (SBP 87 mmHg)\n2. Patient 933 (SBP 98 mmHg)\n3. Patient 7281 (SBP 94 mmHg)\n4. Patient 10605 (SBP 98 mmHg)\n5. Patient 6593 (SBP 82 mmHg)\n6. Patient 3776 (SBP 99 mmHg)\n7. Patient 2480 (SBP 98 mmHg)\n8. Patient 7795 (SBP 87 mmHg)",
+    "patient_ids": [
+      3805,
+      933,
+      7281,
+      10605,
+      6593,
+      3776,
+      2480,
+      7795
+    ],
+    "citations": [
+      {
+        "patient_id": 3805,
+        "chunk_id": "3805_chunk0",
+        "snippet": "Patient 3805, born in the 1940s, Female. Conditions: Pulmonary embolism. Drugs: Enoxaparin. Visits: 2. Latest labs: Glucose 82.4 mg/dL, SBP 87 mmHg."
+      },
+      {
+        "patient_id": 933,
+        "chunk_id": "933_chunk0",
+        "snippet": "Patient 933, born in the 1940s, Male. Conditions: Anemia, Pulmonary embolism, Diabetes mellitus type 2. Drugs: Enoxaparin. Visits: 2. Latest labs: Glucose 72.9 mg/dL, SBP 98 mmHg."
+      },
+      {
+        "patient_id": 7281,
+        "chunk_id": "7281_chunk0",
+        "snippet": "Patient 7281, born in the 1940s, Female. Conditions: Osteoarthritis, Anemia, Diabetes mellitus type 2, Pulmonary embolism. Drugs: Enoxaparin. Visits: 2. Latest labs: Glucose 117.2 mg/dL, SBP 94 mmHg."
+      },
+      {
+        "patient_id": 10605,
+        "chunk_id": "10605_chunk0",
+        "snippet": "Patient 10605, born in the 2000s, Male. Conditions: Pulmonary embolism. Drugs: none. Visits: 2. Latest labs: SBP 98 mmHg, BMI 22.2."
+      },
+      {
+        "patient_id": 6593,
+        "chunk_id": "6593_chunk0",
+        "snippet": "Patient 6593, born in the 1930s, Female. Conditions: Congestive heart failure, Osteoarthritis, Pulmonary embolism. Drugs: Enoxaparin. Visits: 2. Latest labs: Glucose 95.1 mg/dL, SBP 82 mmHg."
+      },
+      {
+        "patient_id": 3776,
+        "chunk_id": "3776_chunk0",
+        "snippet": "Patient 3776, born in the 1940s, Female. Conditions: Pulmonary embolism, Diabetes mellitus type 2, Anemia. Drugs: none. Visits: 2. Latest labs: HbA1c 7%, Glucose 124.9 mg/dL, SBP 99 mmHg, BMI 28."
+      },
+      {
+        "patient_id": 2480,
+        "chunk_id": "2480_chunk0",
+        "snippet": "Patient 2480, born in the 1970s, Female. Conditions: Anemia, Pulmonary embolism. Drugs: none. Visits: 2. Latest labs: HbA1c 6%, Glucose 79.9 mg/dL, SBP 98 mmHg, BMI 30.5."
+      },
+      {
+        "patient_id": 7795,
+        "chunk_id": "7795_chunk1",
+        "snippet": "Latest labs: Glucose 111.6 mg/dL, SBP 87 mmHg."
+      }
+    ],
+    "retrieved_count": 9
+  },
+  "patients with Atrial fibrillation and SBP above 150": {
+    "answer": "Based on the provided patient record excerpts, I can identify the following patient meeting your criteria:\n\n**Patient 4361** (person_id: 4361) has both Atrial fibrillation and SBP above 150 mmHg (specifically SBP 151 mmHg).\n\nThis is the only patient in the provided excerpts that matches both criteria.",
+    "patient_ids": [
+      4361
+    ],
+    "citations": [
+      {
+        "patient_id": 4361,
+        "chunk_id": "4361_chunk0",
+        "snippet": "Patient 4361, born in the 1920s, Female. Conditions: Atrial fibrillation. Drugs: Digoxin, Warfarin. Visits: 2. Latest labs: HbA1c 5.9%, Glucose 70.4 mg/dL, SBP 151 mmHg, BMI 27.8."
+      }
+    ],
+    "retrieved_count": 1
+  },
+  "patients with Hyperlipidemia and HbA1c above 7": {
+    "answer": "Based on the provided patient records, the following patients have both Hyperlipidemia and HbA1c above 7:\n\n1. **Patient 6211** (person_id: 6211) - Has Hyperlipidemia and HbA1c of 7.4%\n\n2. **Patient 4738** (person_id: 4738) - Has Hyperlipidemia and HbA1c of 7.3%\n\n3. **Patient 6597** (person_id: 6597) - Has Hyperlipidemia and HbA1c of 7.4%\n\nAll three patients meet both criteria.",
+    "patient_ids": [
+      6211,
+      4738,
+      6597
+    ],
+    "citations": [
+      {
+        "patient_id": 6211,
+        "chunk_id": "6211_chunk0",
+        "snippet": "Patient 6211, born in the 1940s, Male. Conditions: Hyperlipidemia, Congestive heart failure, Anemia, Diabetes mellitus type 2. Drugs: none. Visits: 2. Latest labs: HbA1c 7.4%, Glucose 107.9 mg/dL."
+      },
+      {
+        "patient_id": 4738,
+        "chunk_id": "4738_chunk1",
+        "snippet": "Latest labs: HbA1c 7.3%, Glucose 106.8 mg/dL, SBP 115 mmHg, BMI 29.1."
+      },
+      {
+        "patient_id": 6597,
+        "chunk_id": "6597_chunk1",
+        "snippet": "Latest labs: HbA1c 7.4%, Glucose 118.9 mg/dL, SBP 110 mmHg, BMI 29.7."
+      }
+    ],
+    "retrieved_count": 5
+  },
+  "patients with Congestive heart failure and SBP below 110": {
+    "answer": "# Patients with Congestive Heart Failure and SBP below 110\n\nBased on the provided records, the following patients meet both criteria:\n\n1. **Patient 3033** - Congestive heart failure, SBP 97 mmHg (person_id: 3033)\n2. **Patient 113** - Congestive heart failure, SBP 79 mmHg (person_id: 113)\n3. **Patient 3180** - Congestive heart failure, SBP 91 mmHg (person_id: 3180)\n4. **Patient 727** - Congestive heart failure, SBP 82 mmHg (person_id: 727)\n5. **Patient 9336** - Congestive heart failure, SBP 84 mmHg (person_id: 9336)\n6. **Patient 4547** - Congestive heart failure, SBP 97 mmHg (person_id: 4547)\n7. **Patient 3188** - Congestive heart failure, SBP 95 mmHg (person_id: 3188)\n8. **Patient 6593** - Congestive heart failure, SBP 82 mmHg (person_id: 6593)\n9. **Patient 8747** - Congestive heart failure, SBP 83 mmHg (person_id: 8747)\n10. **Patient 10760** - Congestive heart failure, SBP 83 mmHg (person_id: 10760)\n11. **Patient 9629** - Congestive heart failure, SBP 92 mmHg (person_id: 9629)\n12. **Patient 10469** - Congestive heart failure, SBP 94 mmHg (person_id: 10469)\n13. **Patient 2429** - Congestive heart failure, SBP 93 mmHg (person_id: 2429)\n\nNote: Patient 8777 has SBP 67 mmHg but this is exceptionally low and may warrant clinical review (person_id: 8777).",
+    "patient_ids": [
+      3033,
+      113,
+      3180,
+      727,
+      9336,
+      4547,
+      3188,
+      10760,
+      6593,
+      8747,
+      1551,
+      4561,
+      10469,
+      1156,
+      9629,
+      8777,
+      2429,
+      1786
+    ],
+    "citations": [
+      {
+        "patient_id": 3033,
+        "chunk_id": "3033_chunk0",
+        "snippet": "Patient 3033, born in the 1960s, Female. Conditions: Anemia, Diabetes mellitus type 2, Congestive heart failure. Drugs: none. Visits: 2. Latest labs: SBP 97 mmHg."
+      },
+      {
+        "patient_id": 113,
+        "chunk_id": "113_chunk0",
+        "snippet": "Patient 113, born in the 1960s, Male. Conditions: Streptococcal pharyngitis, Congestive heart failure. Drugs: Carvedilol. Visits: 2. Latest labs: Glucose 92.1 mg/dL, SBP 79 mmHg, BMI 23.1."
+      },
+      {
+        "patient_id": 3180,
+        "chunk_id": "3180_chunk0",
+        "snippet": "Patient 3180, born in the 1980s, Female. Conditions: Urinary tract infection, Congestive heart failure. Drugs: none. Visits: 2. Latest labs: SBP 91 mmHg."
+      },
+      {
+        "patient_id": 727,
+        "chunk_id": "727_chunk0",
+        "snippet": "Patient 727, born in the 1960s, Female. Conditions: Essential hypertension, Congestive heart failure. Drugs: none. Visits: 2. Latest labs: SBP 82 mmHg."
+      },
+      {
+        "patient_id": 9336,
+        "chunk_id": "9336_chunk0",
+        "snippet": "Patient 9336, born in the 1950s, Male. Conditions: Anemia, Congestive heart failure. Drugs: none. Visits: 2. Latest labs: Glucose 69.1 mg/dL, SBP 84 mmHg."
+      },
+      {
+        "patient_id": 4547,
+        "chunk_id": "4547_chunk0",
+        "snippet": "Patient 4547, born in the 1970s, Male. Conditions: Anemia, Urinary tract infection, Congestive heart failure. Drugs: none. Visits: 2. Latest labs: SBP 97 mmHg."
+      },
+      {
+        "patient_id": 3188,
+        "chunk_id": "3188_chunk0",
+        "snippet": "Patient 3188, born in the 1950s, Male. Conditions: Osteoarthritis, Diabetes mellitus type 2, Essential hypertension, Congestive heart failure, Anemia. Drugs: none. Visits: 2. Latest labs: SBP 95 mmHg."
+      },
+      {
+        "patient_id": 10760,
+        "chunk_id": "10760_chunk1",
+        "snippet": "Latest labs: SBP 83 mmHg."
+      },
+      {
+        "patient_id": 6593,
+        "chunk_id": "6593_chunk0",
+        "snippet": "Patient 6593, born in the 1930s, Female. Conditions: Congestive heart failure, Osteoarthritis, Pulmonary embolism. Drugs: Enoxaparin. Visits: 2. Latest labs: Glucose 95.1 mg/dL, SBP 82 mmHg."
+      },
+      {
+        "patient_id": 8747,
+        "chunk_id": "8747_chunk0",
+        "snippet": "Patient 8747, born in the 1940s, Female. Conditions: Diabetes mellitus type 2, Anemia, Osteoporosis, Congestive heart failure, Essential hypertension. Drugs: none. Visits: 2. Latest labs: SBP 83 mmHg."
+      },
+      {
+        "patient_id": 1551,
+        "chunk_id": "1551_chunk0",
+        "snippet": "Patient 1551, born in the 1970s, Female. Conditions: Essential hypertension, Congestive heart failure, Diabetes mellitus type 2, Anemia. Drugs: Hydrochlorothiazide, Amlodipine. Visits: 2."
+      },
+      {
+        "patient_id": 4561,
+        "chunk_id": "4561_chunk0",
+        "snippet": "Patient 4561, born in the 1950s, Female. Conditions: Congestive heart failure, Diabetes mellitus type 2, Essential hypertension, Anemia. Drugs: Metformin, Amlodipine, Lisinopril, Hydrochlorothiazide."
+      },
+      {
+        "patient_id": 10469,
+        "chunk_id": "10469_chunk0",
+        "snippet": "Patient 10469, born in the 1930s, Male. Conditions: Hyperlipidemia, Essential hypertension, Anemia, Diabetes mellitus type 2, Congestive heart failure."
+      },
+      {
+        "patient_id": 1156,
+        "chunk_id": "1156_chunk0",
+        "snippet": "Patient 1156, born in the 1940s, Male. Conditions: Hyperlipidemia, Osteoporosis, Streptococcal pharyngitis, Congestive heart failure, Essential hypertension."
+      },
+      {
+        "patient_id": 9629,
+        "chunk_id": "9629_chunk1",
+        "snippet": "Latest labs: Glucose 68.4 mg/dL, SBP 92 mmHg, BMI 27.6."
+      },
+      {
+        "patient_id": 8777,
+        "chunk_id": "8777_chunk1",
+        "snippet": "Drugs: Hydrochlorothiazide, Carvedilol, Lisinopril, Insulin, Metformin, Amlodipine. Visits: 2. Latest labs: HbA1c 2.7%, Glucose 132.5 mg/dL, SBP 67 mmHg, BMI 28.8."
+      },
+      {
+        "patient_id": 2429,
+        "chunk_id": "2429_chunk0",
+        "snippet": "Patient 2429, born in the 1940s, Female. Conditions: Congestive heart failure, Hyperlipidemia, Streptococcal pharyngitis, Osteoporosis. Drugs: Carvedilol, Alendronic acid. Visits: 2."
+      },
+      {
+        "patient_id": 1786,
+        "chunk_id": "1786_chunk1",
+        "snippet": "Latest labs: HbA1c 6.1%, Glucose 66 mg/dL, SBP 69 mmHg, BMI 22.8."
+      }
+    ],
+    "retrieved_count": 25
+  },
+  "patients with Streptococcal pharyngitis and BMI below 25": {
+    "answer": "# Patients with Streptococcal Pharyngitis and BMI Below 25\n\nBased on the provided records, the following patients meet both criteria (Streptococcal pharyngitis diagnosis AND BMI < 25):\n\n1. Patient 11146 (person_id: 11146) - BMI 24.6\n2. Patient 7201 (person_id: 7201) - BMI 19.9\n3. Patient 11465 (person_id: 11465) - BMI 23.2\n4. Patient 248 (person_id: 248) - BMI 22.4\n5. Patient 301 (person_id: 301) - BMI 19.6\n6. Patient 5195 (person_id: 5195) - BMI 18.1\n7. Patient 9563 (person_id: 9563) - BMI 20.6\n8. Patient 4956 (person_id: 4956) - BMI 17.4\n9. Patient 5014 (person_id: 5014) - BMI 23.3\n10. Patient 4664 (person_id: 4664) - BMI 21.4\n11. Patient 2340 (person_id: 2340) - BMI 16.8\n12. Patient 5460 (person_id: 5460) - BMI 23.2\n13. Patient 3730 (person_id: 3730) - BMI 22.4\n14. Patient 2339 (person_id: 2339) - BMI 20.7\n15. Patient 785 (person_id: 785) - BMI 15.8\n16. Patient 2804 (person_id: 2804) - BMI 24.4\n17. Patient 381 (person_id: 381) - BMI 22.5\n18. Patient 4025 (person_id: 4025) - BMI 22.9\n19. Patient 726 (person_id: 726) - BMI 17.1\n20. Patient 4708 (person_id: 4708) - BMI 22.3\n21. Patient 2574 (person_id: 2574) - BMI 21.6\n22. Patient 272 (person_id: 272) - BMI 19.3\n23. Patient 3764 (person_id: 3764) - BMI 22.5\n24. Patient 2764 (person_id: 2764) - BMI 18.4\n25. Patient 5032 (person_id: 5032) - BMI 21.3\n\n**Total: 25 patients** meet both criteria.",
+    "patient_ids": [
+      11146,
+      7201,
+      11465,
+      248,
+      301,
+      5195,
+      9563,
+      4956,
+      5014,
+      4664,
+      2340,
+      5460,
+      3730,
+      2339,
+      785,
+      2804,
+      381,
+      4025,
+      726,
+      4708,
+      2574,
+      272,
+      3764,
+      2764,
+      5032
+    ],
+    "citations": [
+      {
+        "patient_id": 11146,
+        "chunk_id": "11146_chunk0",
+        "snippet": "Patient 11146, born in the 2010s, Male. Conditions: Streptococcal pharyngitis. Drugs: none. Visits: 2. Latest labs: BMI 24.6."
+      },
+      {
+        "patient_id": 7201,
+        "chunk_id": "7201_chunk0",
+        "snippet": "Patient 7201, born in the 2010s, Female. Conditions: Streptococcal pharyngitis. Drugs: none. Visits: 2. Latest labs: BMI 19.9."
+      },
+      {
+        "patient_id": 11465,
+        "chunk_id": "11465_chunk0",
+        "snippet": "Patient 11465, born in the 2000s, Male. Conditions: Streptococcal pharyngitis. Drugs: none. Visits: 3. Latest labs: BMI 23.2."
+      },
+      {
+        "patient_id": 248,
+        "chunk_id": "248_chunk0",
+        "snippet": "Patient 248, born in the 2010s, Male. Conditions: Streptococcal pharyngitis. Drugs: none. Visits: 2. Latest labs: BMI 22.4."
+      },
+      {
+        "patient_id": 301,
+        "chunk_id": "301_chunk0",
+        "snippet": "Patient 301, born in the 2010s, Male. Conditions: Streptococcal pharyngitis. Drugs: none. Visits: 2. Latest labs: SBP 97 mmHg, BMI 19.6."
+      },
+      {
+        "patient_id": 5195,
+        "chunk_id": "5195_chunk0",
+        "snippet": "Patient 5195, born in the 2010s, Male. Conditions: Streptococcal pharyngitis. Drugs: none. Visits: 2. Latest labs: BMI 18.1."
+      },
+      {
+        "patient_id": 9563,
+        "chunk_id": "9563_chunk0",
+        "snippet": "Patient 9563, born in the 2000s, Female. Conditions: Streptococcal pharyngitis. Drugs: none. Visits: 2. Latest labs: SBP 128 mmHg, BMI 20.6."
+      },
+      {
+        "patient_id": 4956,
+        "chunk_id": "4956_chunk0",
+        "snippet": "Patient 4956, born in the 2010s, Male. Conditions: Streptococcal pharyngitis. Drugs: none. Visits: 2. Latest labs: SBP 127 mmHg, BMI 17.4."
+      },
+      {
+        "patient_id": 5014,
+        "chunk_id": "5014_chunk0",
+        "snippet": "Patient 5014, born in the 2000s, Male. Conditions: Streptococcal pharyngitis. Drugs: none. Visits: 2. Latest labs: SBP 115 mmHg, BMI 23.3."
+      },
+      {
+        "patient_id": 4664,
+        "chunk_id": "4664_chunk0",
+        "snippet": "Patient 4664, born in the 2000s, Male. Conditions: Streptococcal pharyngitis. Drugs: none. Visits: 2. Latest labs: SBP 103 mmHg, BMI 21.4."
+      },
+      {
+        "patient_id": 2340,
+        "chunk_id": "2340_chunk0",
+        "snippet": "Patient 2340, born in the 2020s, Female. Conditions: Streptococcal pharyngitis. Drugs: none. Visits: 2. Latest labs: SBP 139 mmHg, BMI 16.8."
+      },
+      {
+        "patient_id": 5460,
+        "chunk_id": "5460_chunk0",
+        "snippet": "Patient 5460, born in the 2000s, Male. Conditions: Streptococcal pharyngitis. Drugs: none. Visits: 2. Latest labs: SBP 106 mmHg, BMI 23.2."
+      },
+      {
+        "patient_id": 3730,
+        "chunk_id": "3730_chunk0",
+        "snippet": "Patient 3730, born in the 2000s, Male. Conditions: Streptococcal pharyngitis. Drugs: none. Visits: 2. Latest labs: SBP 126 mmHg, BMI 22.4."
+      },
+      {
+        "patient_id": 2339,
+        "chunk_id": "2339_chunk0",
+        "snippet": "Patient 2339, born in the 2000s, Female. Conditions: Streptococcal pharyngitis. Drugs: none. Visits: 2. Latest labs: SBP 128 mmHg, BMI 20.7."
+      },
+      {
+        "patient_id": 785,
+        "chunk_id": "785_chunk0",
+        "snippet": "Patient 785, born in the 2020s, Male. Conditions: Streptococcal pharyngitis. Drugs: none. Visits: 2. Latest labs: SBP 123 mmHg, BMI 15.8."
+      },
+      {
+        "patient_id": 2804,
+        "chunk_id": "2804_chunk0",
+        "snippet": "Patient 2804, born in the 2000s, Female. Conditions: Streptococcal pharyngitis. Drugs: none. Visits: 2. Latest labs: SBP 97 mmHg, BMI 24.4."
+      },
+      {
+        "patient_id": 381,
+        "chunk_id": "381_chunk0",
+        "snippet": "Patient 381, born in the 2000s, Female. Conditions: Streptococcal pharyngitis. Drugs: none. Visits: 2. Latest labs: SBP 111 mmHg, BMI 22.5."
+      },
+      {
+        "patient_id": 4025,
+        "chunk_id": "4025_chunk0",
+        "snippet": "Patient 4025, born in the 2000s, Male. Conditions: Streptococcal pharyngitis. Drugs: none. Visits: 2. Latest labs: SBP 121 mmHg, BMI 22.9."
+      },
+      {
+        "patient_id": 726,
+        "chunk_id": "726_chunk0",
+        "snippet": "Patient 726, born in the 2010s, Male. Conditions: Streptococcal pharyngitis. Drugs: none. Visits: 2. Latest labs: BMI 17.1."
+      },
+      {
+        "patient_id": 4708,
+        "chunk_id": "4708_chunk0",
+        "snippet": "Patient 4708, born in the 2000s, Male. Conditions: Streptococcal pharyngitis. Drugs: none. Visits: 2. Latest labs: SBP 113 mmHg, BMI 22.3."
+      },
+      {
+        "patient_id": 2574,
+        "chunk_id": "2574_chunk0",
+        "snippet": "Patient 2574, born in the 2000s, Male. Conditions: Streptococcal pharyngitis. Drugs: none. Visits: 2. Latest labs: SBP 120 mmHg, BMI 21.6."
+      },
+      {
+        "patient_id": 272,
+        "chunk_id": "272_chunk0",
+        "snippet": "Patient 272, born in the 2010s, Female. Conditions: Streptococcal pharyngitis. Drugs: none. Visits: 2. Latest labs: SBP 112 mmHg, BMI 19.3."
+      },
+      {
+        "patient_id": 3764,
+        "chunk_id": "3764_chunk0",
+        "snippet": "Patient 3764, born in the 2000s, Male. Conditions: Streptococcal pharyngitis. Drugs: none. Visits: 2. Latest labs: SBP 120 mmHg, BMI 22.5."
+      },
+      {
+        "patient_id": 2764,
+        "chunk_id": "2764_chunk0",
+        "snippet": "Patient 2764, born in the 2020s, Female. Conditions: Streptococcal pharyngitis. Drugs: none. Visits: 2. Latest labs: SBP 122 mmHg, BMI 18.4."
+      },
+      {
+        "patient_id": 5032,
+        "chunk_id": "5032_chunk0",
+        "snippet": "Patient 5032, born in the 2000s, Male. Conditions: Streptococcal pharyngitis. Drugs: none. Visits: 2. Latest labs: SBP 132 mmHg, BMI 21.3."
+      }
+    ],
+    "retrieved_count": 25
+  },
+  "patients with Anemia and Glucose above 150": {
+    "answer": "Based on the patient records provided, the following patients have both Anemia and Glucose above 150 mg/dL:\n\n1. **Patient 6452** (person_id: 6452) - Anemia, Glucose 188.1 mg/dL\n2. **Patient 9675** (person_id: 9675) - Anemia, Glucose 161.6 mg/dL\n3. **Patient 3405** (person_id: 3405) - Anemia, Glucose 195.4 mg/dL\n4. **Patient 9119** (person_id: 9119) - Anemia, Glucose 171.9 mg/dL\n5. **Patient 9691** (person_id: 9691) - Anemia, Glucose 155.5 mg/dL\n6. **Patient 438** (person_id: 438) - Anemia, Glucose 159.9 mg/dL\n7. **Patient 798** (person_id: 798) - Anemia, Glucose 182 mg/dL\n8. **Patient 1763** (person_id: 1763) - Anemia, Glucose 160.9 mg/dL\n9. **Patient 3024** (person_id: 3024) - Anemia, Glucose 192.9 mg/dL\n10. **Patient 2222** (person_id: 2222) - Anemia, Glucose 161.8 mg/dL\n11. **Patient 5222** (person_id: 5222) - Anemia, Glucose 157.7 mg/dL\n12. **Patient 7532** (person_id: 7532) - Anemia, Glucose 165.4 mg/dL\n13. **Patient 1702** (person_id: 1702) - Anemia, Glucose 166.3 mg/dL",
+    "patient_ids": [
+      6452,
+      9675,
+      3405,
+      9119,
+      9691,
+      7811,
+      438,
+      7532,
+      5222,
+      891,
+      8314,
+      1763,
+      4378,
+      3024,
+      2222,
+      798,
+      1702,
+      11557,
+      6707
+    ],
+    "citations": [
+      {
+        "patient_id": 6452,
+        "chunk_id": "6452_chunk0",
+        "snippet": "Patient 6452, born in the 1960s, Male. Conditions: Anemia, Diabetes mellitus type 2. Drugs: Metformin. Visits: 2. Latest labs: HbA1c 5.8%, Glucose 188.1 mg/dL, SBP 118 mmHg, BMI 29."
+      },
+      {
+        "patient_id": 9675,
+        "chunk_id": "9675_chunk0",
+        "snippet": "Patient 9675, born in the 1950s, Male. Conditions: Anemia, Diabetes mellitus type 2. Drugs: Metformin. Visits: 2. Latest labs: HbA1c 5.5%, Glucose 161.6 mg/dL, SBP 118 mmHg, BMI 28.1."
+      },
+      {
+        "patient_id": 3405,
+        "chunk_id": "3405_chunk0",
+        "snippet": "Patient 3405, born in the 1960s, Female. Conditions: Anemia, Diabetes mellitus type 2. Drugs: Metformin. Visits: 2. Latest labs: HbA1c 5.5%, Glucose 195.4 mg/dL, SBP 91 mmHg, BMI 28.1."
+      },
+      {
+        "patient_id": 9119,
+        "chunk_id": "9119_chunk0",
+        "snippet": "Patient 9119, born in the 1980s, Male. Conditions: Diabetes mellitus type 2, Anemia. Drugs: Insulin, Metformin. Visits: 2. Latest labs: HbA1c 3.1%, Glucose 171.9 mg/dL, BMI 30.2."
+      },
+      {
+        "patient_id": 9691,
+        "chunk_id": "9691_chunk0",
+        "snippet": "Patient 9691, born in the 1960s, Male. Conditions: Essential hypertension, Anemia, Hyperlipidemia, Diabetes mellitus type 2. Drugs: Simvastatin. Visits: 2. Latest labs: Glucose 155.5 mg/dL."
+      },
+      {
+        "patient_id": 7811,
+        "chunk_id": "7811_chunk1",
+        "snippet": "Latest labs: HbA1c 5.4%, Glucose 178.5 mg/dL, SBP 97 mmHg, BMI 27.7."
+      },
+      {
+        "patient_id": 438,
+        "chunk_id": "438_chunk0",
+        "snippet": "Patient 438, born in the 1980s, Male. Conditions: Diabetes mellitus type 2, Anemia. Drugs: Metformin. Visits: 2. Latest labs: HbA1c 5.7%, Glucose 159.9 mg/dL, SBP 129 mmHg, BMI 28.7."
+      },
+      {
+        "patient_id": 7532,
+        "chunk_id": "7532_chunk1",
+        "snippet": "Latest labs: HbA1c 4.8%, Glucose 165.4 mg/dL."
+      },
+      {
+        "patient_id": 5222,
+        "chunk_id": "5222_chunk1",
+        "snippet": "Latest labs: HbA1c 6.1%, Glucose 157.7 mg/dL, SBP 119 mmHg, BMI 30.2."
+      },
+      {
+        "patient_id": 891,
+        "chunk_id": "891_chunk1",
+        "snippet": "Latest labs: HbA1c 5.5%, Glucose 175 mg/dL, SBP 115 mmHg, BMI 28."
+      },
+      {
+        "patient_id": 8314,
+        "chunk_id": "8314_chunk1",
+        "snippet": "Latest labs: HbA1c 5.2%, Glucose 198.6 mg/dL, SBP 96 mmHg, BMI 38.7."
+      },
+      {
+        "patient_id": 1763,
+        "chunk_id": "1763_chunk1",
+        "snippet": "Latest labs: HbA1c 5.4%, Glucose 160.9 mg/dL, SBP 105 mmHg, BMI 27.4."
+      },
+      {
+        "patient_id": 4378,
+        "chunk_id": "4378_chunk1",
+        "snippet": "Latest labs: HbA1c 6.1%, Glucose 198 mg/dL, SBP 130 mmHg, BMI 30.3."
+      },
+      {
+        "patient_id": 3024,
+        "chunk_id": "3024_chunk1",
+        "snippet": "Latest labs: HbA1c 5.6%, Glucose 192.9 mg/dL, SBP 96 mmHg, BMI 28.5."
+      },
+      {
+        "patient_id": 2222,
+        "chunk_id": "2222_chunk1",
+        "snippet": "Latest labs: HbA1c 9%, Glucose 161.8 mg/dL, SBP 111 mmHg, BMI 42.1."
+      },
+      {
+        "patient_id": 798,
+        "chunk_id": "798_chunk0",
+        "snippet": "Patient 798, born in the 1910s, Male. Conditions: Diabetes mellitus type 2, Osteoporosis, Anemia. Drugs: Alendronic acid, Insulin, Metformin. Visits: 2. Latest labs: HbA1c 2.4%, Glucose 182 mg/dL."
+      },
+      {
+        "patient_id": 1702,
+        "chunk_id": "1702_chunk1",
+        "snippet": "Latest labs: Glucose 166.3 mg/dL."
+      },
+      {
+        "patient_id": 11557,
+        "chunk_id": "11557_chunk0",
+        "snippet": "Patient 11557, born in the 1950s, Female. Conditions: Diabetes mellitus type 2, Osteoporosis, Atrial fibrillation, Anemia, Essential hypertension."
+      },
+      {
+        "patient_id": 6707,
+        "chunk_id": "6707_chunk1",
+        "snippet": "Visits: 2. Latest labs: HbA1c 5.6%, Glucose 158.4 mg/dL, SBP 110 mmHg, BMI 28.4."
+      }
+    ],
+    "retrieved_count": 25
+  },
+  "patients with lung cancer and SBP above 220": {
+    "answer": "I don't know - I couldn't find any patient records relevant to that question.",
+    "patient_ids": [],
+    "citations": [],
+    "retrieved_count": 0
+  },
+  "patients with schizophrenia and Glucose above 300": {
+    "answer": "I don't know - I couldn't find any patient records relevant to that question.",
+    "patient_ids": [],
+    "citations": [],
+    "retrieved_count": 0
+  },
+  "patients with appendicitis and HbA1c above 13": {
+    "answer": "I don't know - I couldn't find any patient records relevant to that question.",
+    "patient_ids": [],
+    "citations": [],
+    "retrieved_count": 0
+  }
+}

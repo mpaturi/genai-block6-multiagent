@@ -60,20 +60,27 @@
     "drug_a_count": 0,
     "drug_b_count": 0,
     "ground_truth_source": "verified_by_hand_deliberately_unanswerable",
-    "note": "Deliberately-unanswerable control question (condition 'lung cancer' - not present anywhere in data/seed/ci_graph_seed.cypher's Condition nodes), matching Block 5's precedent (tasks.json's answerable:false entries). Independently confirmed zero matching patients by running the unbounded enumeration query directly against the seed data, not assumed from the condition's absence alone. Not recall-scored - Phase 5's eval harness must instead check this reports nothing_found/zero patients as a pass/fail control, separate from the 8-question recall percentage."
+    "note": "Deliberately-unanswerable control question (condition 'lung cancer' - not present anywhere in data/seed/ci_graph_seed.cypher's Condition nodes), matching Block 5's precedent (tasks.json's answerable:false entries). Independently confirmed zero matching patients by running the unbounded enumeration query directly against the seed data, not assumed from the condition's absence alone. Not recall-scored - Phase 5's eval harness must instead check this reports nothing_found/zero patients as a pass/fail control, separate from the recall percentage."
   },
   "q10": {
     "total_patients_matched": 0,
     "drug_a_count": 0,
     "drug_b_count": 0,
     "ground_truth_source": "verified_by_hand_deliberately_unanswerable",
-    "note": "Deliberately-unanswerable control question (condition 'schizophrenia' - not present anywhere in data/seed/ci_graph_seed.cypher's Condition nodes), matching Block 5's precedent (tasks.json's answerable:false entries). Independently confirmed zero matching patients by running the unbounded enumeration query directly against the seed data, not assumed from the condition's absence alone. Not recall-scored - Phase 5's eval harness must instead check this reports nothing_found/zero patients as a pass/fail control, separate from the 8-question recall percentage."
+    "note": "Deliberately-unanswerable control question (condition 'schizophrenia' - not present anywhere in data/seed/ci_graph_seed.cypher's Condition nodes), matching Block 5's precedent (tasks.json's answerable:false entries). Independently confirmed zero matching patients by running the unbounded enumeration query directly against the seed data, not assumed from the condition's absence alone. Not recall-scored - Phase 5's eval harness must instead check this reports nothing_found/zero patients as a pass/fail control, separate from the recall percentage."
   },
   "q11": {
     "total_patients_matched": 0,
     "drug_a_count": 0,
     "drug_b_count": 0,
     "ground_truth_source": "verified_by_hand_deliberately_unanswerable",
-    "note": "Deliberately-unanswerable control question (condition 'appendicitis' - not present anywhere in data/seed/ci_graph_seed.cypher's Condition nodes), matching Block 5's precedent (tasks.json's answerable:false entries). Independently confirmed zero matching patients by running the unbounded enumeration query directly against the seed data, not assumed from the condition's absence alone. Not recall-scored - Phase 5's eval harness must instead check this reports nothing_found/zero patients as a pass/fail control, separate from the 8-question recall percentage."
+    "note": "Deliberately-unanswerable control question (condition 'appendicitis' - not present anywhere in data/seed/ci_graph_seed.cypher's Condition nodes), matching Block 5's precedent (tasks.json's answerable:false entries). Independently confirmed zero matching patients by running the unbounded enumeration query directly against the seed data, not assumed from the condition's absence alone. Not recall-scored - Phase 5's eval harness must instead check this reports nothing_found/zero patients as a pass/fail control, separate from the recall percentage."
+  },
+  "q12": {
+    "total_patients_matched": 30,
+    "drug_a_count": 15,
+    "drug_b_count": 5,
+    "ground_truth_source": "verified_by_hand_phase5_seed_extension",
+    "note": "Added to close a real coverage gap a PR #5 review found: no question exercised the total_patients_matched > 25 reconciliation path (spec.md §2, plan.md §8's high-confidence rule) with a non-zero real drug count - q1/q7 both sit exactly at the 25-patient boundary, and no combination in Block 5's original seed exceeds 25 with real prescriptions. data/seed/ci_graph_seed.cypher was deliberately extended with an isolated 30-patient cohort under a brand-new condition ('Chronic kidney disease', not used by any other question) built from Drug nodes already in the seed (Amlodipine, Warfarin). Independently re-verified by hand: ran the real unbounded enumeration query and the real exhaustive drug-count query directly against the extended seed via cypher-shell (docs/plan.md §11's same method), not derived from how the synthetic patients were constructed. Also re-ran the same queries for all 11 original questions against the extended seed first, confirming none of their ground truth shifted."
   }
 }

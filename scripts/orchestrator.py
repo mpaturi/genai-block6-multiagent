@@ -21,6 +21,7 @@ from langgraph.graph import END, StateGraph
 
 from scripts.cohort_agent import run_cohort_agent
 from scripts.error_classification import classify_exception
+from scripts.run_log import log_multiagent_run
 from scripts.schemas import (
     Citation,
     CohortResult,
@@ -29,6 +30,11 @@ from scripts.schemas import (
     ReconciliationResult,
 )
 from scripts.vocabulary_check import get_known_vocabulary
+
+# clinical_cost_info's shape when Role 1 never successfully returned
+# (cohort_only_degraded, both_failed, an out-of-contract exception) -
+# nothing to log a real cost for on those paths (docs/plan.md §9).
+_ZERO_COST_INFO = {"cost_usd": 0.0, "input_tokens": 0, "output_tokens": 0}
 
 logger = logging.getLogger(__name__)
 
@@ -455,8 +461,12 @@ async def run_multi_agent_async(
 
     async def clinical_node(state: MultiAgentState) -> dict:
         def on_success(raw_result):
-            answer, count_step_ran = raw_result
-            return {"clinical_result": answer, "clinical_count_step_ran": count_step_ran}
+            answer, count_step_ran, cost_info = raw_result
+            return {
+                "clinical_result": answer,
+                "clinical_count_step_ran": count_step_ran,
+                "clinical_cost_info": cost_info,
+            }
 
         return await _run_branch(
             "clinical",
@@ -508,6 +518,7 @@ async def run_multi_agent_async(
         "question": question,
         "clinical_result": None,
         "clinical_count_step_ran": None,
+        "clinical_cost_info": None,
         "clinical_error": None,
         "clinical_error_kind": None,
         "cohort_result": None,
@@ -516,8 +527,23 @@ async def run_multi_agent_async(
         "reconciliation": None,
         "final_answer": None,
     }
+    started_at = time.monotonic()
     final_state = await compiled.ainvoke(initial_state)
-    return final_state["final_answer"]
+    latency_ms = (time.monotonic() - started_at) * 1000
+
+    final_answer = final_state["final_answer"]
+    cost_info = final_state.get("clinical_cost_info") or _ZERO_COST_INFO
+    log_multiagent_run(
+        question=final_answer.question,
+        mode=final_answer.mode,
+        confidence=final_answer.confidence,
+        discrepancy_flag=final_answer.discrepancy_flag,
+        total_patients=final_answer.total_patients,
+        latency_ms=latency_ms,
+        cost_usd=cost_info["cost_usd"],
+        tokens=cost_info["input_tokens"] + cost_info["output_tokens"],
+    )
+    return final_answer
 
 
 def run_multi_agent(

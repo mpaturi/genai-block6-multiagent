@@ -60,6 +60,10 @@ QUESTION = QuestionInput(
     drug_b="Amlodipine",
 )
 
+# run_agent's third return value (see block5_agent's phase-11-expose-cost
+# branch) - fixed dummy values are fine here, these are fakes.
+_DUMMY_COST_INFO = {"cost_usd": 0.001, "input_tokens": 50, "output_tokens": 20}
+
 
 def _clinical_answer(
     rag_patient_ids,
@@ -118,6 +122,7 @@ def test_both_answered_matching_counts_at_or_under_25_is_high_confidence_reconci
         (
             _clinical_answer([1, 2, 3], {"Lisinopril": 2, "Amlodipine": 1}, citations=citations),
             True,
+            _DUMMY_COST_INFO,
         )
     )
     cohort_fn = _fn(_cohort_result(3, 2, 1))
@@ -138,7 +143,9 @@ def test_both_answered_over_25_uses_cohorts_exhaustive_counts_as_authoritative()
     # (16/9 over 25 patients) disagree with Role 2's exhaustive 25/15 over
     # 40, but that's expected, not a real discrepancy: Role 2 is used
     # as-is, with no discrepancy_flag raised over it.
-    clinical_fn = _fn((_clinical_answer(list(range(1, 26)), {"Lisinopril": 16, "Amlodipine": 9}), True))
+    clinical_fn = _fn(
+        (_clinical_answer(list(range(1, 26)), {"Lisinopril": 16, "Amlodipine": 9}), True, _DUMMY_COST_INFO)
+    )
     cohort_fn = _fn(_cohort_result(40, 25, 15))
 
     result = _run(clinical_fn, cohort_fn)
@@ -154,7 +161,9 @@ def test_both_answered_over_25_uses_cohorts_exhaustive_counts_as_authoritative()
 
 
 def test_both_answered_counts_disagree_at_or_under_25_is_low_confidence_discrepancy():
-    clinical_fn = _fn((_clinical_answer([1, 2, 3], {"Lisinopril": 1, "Amlodipine": 1}), True))
+    clinical_fn = _fn(
+        (_clinical_answer([1, 2, 3], {"Lisinopril": 1, "Amlodipine": 1}), True, _DUMMY_COST_INFO)
+    )
     cohort_fn = _fn(_cohort_result(3, 2, 1))
 
     result = _run(clinical_fn, cohort_fn)
@@ -168,7 +177,7 @@ def test_both_answered_counts_disagree_at_or_under_25_is_low_confidence_discrepa
 
 
 def test_both_nothing_found_is_high_confidence_reconciled_with_zero_patients():
-    clinical_fn = _fn((_clinical_answer([], {}, outcome="nothing_found"), False))
+    clinical_fn = _fn((_clinical_answer([], {}, outcome="nothing_found"), False, _DUMMY_COST_INFO))
     cohort_fn = _fn(_cohort_result(0, 0, 0, patient_ids=[], outcome="nothing_found"))
 
     result = _run(clinical_fn, cohort_fn)
@@ -187,7 +196,7 @@ def test_nothing_found_answered_split_reports_confirmed_vocabulary_mismatch(monk
         "get_known_vocabulary",
         lambda: {"conditions": {"Essential hypertension"}, "labs": {"SBP"}},
     )
-    clinical_fn = _fn((_clinical_answer([], {}, outcome="nothing_found"), False))
+    clinical_fn = _fn((_clinical_answer([], {}, outcome="nothing_found"), False, _DUMMY_COST_INFO))
     cohort_fn = _fn(_cohort_result(12, 8, 4))
 
     result = _run(clinical_fn, cohort_fn)
@@ -206,7 +215,7 @@ def test_nothing_found_answered_split_reports_vocabulary_looks_consistent(monkey
         "get_known_vocabulary",
         lambda: {"conditions": {"hypertension"}, "labs": {"SBP"}},
     )
-    clinical_fn = _fn((_clinical_answer([], {}, outcome="nothing_found"), False))
+    clinical_fn = _fn((_clinical_answer([], {}, outcome="nothing_found"), False, _DUMMY_COST_INFO))
     cohort_fn = _fn(_cohort_result(12, 8, 4))
 
     result = _run(clinical_fn, cohort_fn)
@@ -228,7 +237,7 @@ def test_answered_nothing_found_split_reports_confirmed_vocabulary_mismatch(monk
         "get_known_vocabulary",
         lambda: {"conditions": {"Essential hypertension"}, "labs": {"SBP"}},
     )
-    clinical_fn = _fn((_clinical_answer([1, 2, 3], {}), True))
+    clinical_fn = _fn((_clinical_answer([1, 2, 3], {}), True, _DUMMY_COST_INFO))
     cohort_fn = _fn(_cohort_result(0, 0, 0, patient_ids=[], outcome="nothing_found"))
 
     result = _run(clinical_fn, cohort_fn)
@@ -244,7 +253,7 @@ def test_answered_nothing_found_split_reports_vocabulary_looks_consistent(monkey
         "get_known_vocabulary",
         lambda: {"conditions": {"hypertension"}, "labs": {"SBP"}},
     )
-    clinical_fn = _fn((_clinical_answer([1, 2, 3], {}), True))
+    clinical_fn = _fn((_clinical_answer([1, 2, 3], {}), True, _DUMMY_COST_INFO))
     cohort_fn = _fn(_cohort_result(0, 0, 0, patient_ids=[], outcome="nothing_found"))
 
     result = _run(clinical_fn, cohort_fn)
@@ -266,7 +275,7 @@ def test_clinical_count_step_ran_false_is_not_treated_as_a_zero_count(monkeypatc
     monkeypatch.setattr(
         orchestrator, "get_known_vocabulary", lambda: {"conditions": {"hypertension"}, "labs": {"SBP"}}
     )
-    clinical_fn = _fn((_clinical_answer([], {}, outcome="nothing_found"), False))
+    clinical_fn = _fn((_clinical_answer([], {}, outcome="nothing_found"), False, _DUMMY_COST_INFO))
     cohort_fn = _fn(_cohort_result(2, 1, 1))
 
     result = _run(clinical_fn, cohort_fn)
@@ -276,12 +285,39 @@ def test_clinical_count_step_ran_false_is_not_treated_as_a_zero_count(monkeypatc
     assert result.confidence == "low"
 
 
+# --- clinical_cost_info threading (block5_agent's phase-11-expose-cost) -
+
+
+def test_clinical_cost_info_reaches_state_correctly(monkeypatch):
+    # Spies on the real reconcile_node by capturing the state dict it's
+    # called with, then delegates to it - proves clinical_cost_info
+    # actually lands in MultiAgentState by the time reconcile_node runs,
+    # not just that clinical_node's return value looked right in isolation.
+    captured_state = {}
+    real_reconcile_node = orchestrator.reconcile_node
+
+    def _spy_reconcile_node(state):
+        captured_state.update(state)
+        return real_reconcile_node(state)
+
+    monkeypatch.setattr(orchestrator, "reconcile_node", _spy_reconcile_node)
+
+    clinical_fn = _fn(
+        (_clinical_answer([1, 2], {"Lisinopril": 1, "Amlodipine": 1}), True, _DUMMY_COST_INFO)
+    )
+    cohort_fn = _fn(_cohort_result(2, 1, 1))
+
+    _run(clinical_fn, cohort_fn)
+
+    assert captured_state["clinical_cost_info"] == _DUMMY_COST_INFO
+
+
 # --- §4 degradation matrix ----------------------------------------------
 
 
 def test_clinical_tool_error_cohort_succeeds_is_cohort_only_degraded_high_confidence():
     clinical_fn = _fn(
-        (_clinical_answer([], {}, outcome="tool_error", caveat="search failed"), False)
+        (_clinical_answer([], {}, outcome="tool_error", caveat="search failed"), False, _DUMMY_COST_INFO)
     )
     cohort_fn = _fn(_cohort_result(18, 11, 7))
 
@@ -316,6 +352,7 @@ def test_clinical_succeeds_cohort_tool_error_is_clinical_only_degraded_medium_at
                 caveat="Only 15 matching patient(s) were checked.",
             ),
             True,
+            _DUMMY_COST_INFO,
         )
     )
     cohort_fn = _fn(_cohort_result(0, 0, 0, patient_ids=[], outcome="tool_error", caveat="graph down"))
@@ -340,6 +377,7 @@ def test_clinical_succeeds_cohort_tool_error_is_clinical_only_degraded_low_below
                 caveat="Only 14 matching patient(s) were checked.",
             ),
             True,
+            _DUMMY_COST_INFO,
         )
     )
     cohort_fn = _fn(_cohort_result(0, 0, 0, patient_ids=[], outcome="tool_error", caveat="graph down"))
@@ -352,7 +390,9 @@ def test_clinical_succeeds_cohort_tool_error_is_clinical_only_degraded_low_below
 
 
 def test_both_tool_error_is_both_failed_low_confidence_and_never_raises():
-    clinical_fn = _fn((_clinical_answer([], {}, outcome="tool_error", caveat="search failed"), False))
+    clinical_fn = _fn(
+        (_clinical_answer([], {}, outcome="tool_error", caveat="search failed"), False, _DUMMY_COST_INFO)
+    )
     cohort_fn = _fn(_cohort_result(0, 0, 0, patient_ids=[], outcome="tool_error", caveat="graph down"))
 
     # If run_multi_agent_async ever let a failure here propagate, the call
@@ -408,7 +448,7 @@ def test_reconcile_node_wraps_a_real_vocabulary_check_failure_and_degrades_grace
 
     monkeypatch.setattr(vocabulary_check, "get_driver", _raising_get_driver)
 
-    clinical_fn = _fn((_clinical_answer([], {}, outcome="nothing_found"), False))
+    clinical_fn = _fn((_clinical_answer([], {}, outcome="nothing_found"), False, _DUMMY_COST_INFO))
     cohort_fn = _fn(_cohort_result(12, 8, 4))
 
     # If reconcile_node ever let this propagate, the call below itself
@@ -421,7 +461,9 @@ def test_reconcile_node_wraps_a_real_vocabulary_check_failure_and_degrades_grace
 
 
 def test_sync_entry_point_delegates_to_the_async_implementation():
-    clinical_fn = _fn((_clinical_answer([1, 2], {"Lisinopril": 1, "Amlodipine": 1}), True))
+    clinical_fn = _fn(
+        (_clinical_answer([1, 2], {"Lisinopril": 1, "Amlodipine": 1}), True, _DUMMY_COST_INFO)
+    )
     cohort_fn = _fn(_cohort_result(2, 1, 1))
 
     result = run_multi_agent(QUESTION, clinical_agent_fn=clinical_fn, cohort_agent_fn=cohort_fn)
@@ -444,7 +486,7 @@ def _sleepy_clinical_fn(delay_seconds, result):
 def test_branch_exceeding_the_ceiling_reports_timeout_via_the_dedicated_executor(monkeypatch):
     monkeypatch.setattr(orchestrator, "_BRANCH_TIMEOUT_SECONDS", 0.05)
     clinical_fn = _sleepy_clinical_fn(
-        0.3, (_clinical_answer([1, 2, 3], {"Lisinopril": 2, "Amlodipine": 1}), True)
+        0.3, (_clinical_answer([1, 2, 3], {"Lisinopril": 2, "Amlodipine": 1}), True, _DUMMY_COST_INFO)
     )
     cohort_fn = _fn(_cohort_result(9, 5, 3))
 
@@ -466,7 +508,7 @@ def test_block6_executor_is_a_dedicated_thread_pool_not_the_default_one():
 def test_late_arriving_result_after_timeout_is_logged_as_a_warning_not_dropped(monkeypatch, caplog):
     monkeypatch.setattr(orchestrator, "_BRANCH_TIMEOUT_SECONDS", 0.05)
     clinical_fn = _sleepy_clinical_fn(
-        0.3, (_clinical_answer([1, 2, 3], {"Lisinopril": 2, "Amlodipine": 1}), True)
+        0.3, (_clinical_answer([1, 2, 3], {"Lisinopril": 2, "Amlodipine": 1}), True, _DUMMY_COST_INFO)
     )
     cohort_fn = _fn(_cohort_result(9, 5, 3))
 

@@ -2,7 +2,7 @@
 docs/plan.md §12).
 
 Two layers use this: the CI-time entry point below (Phase 4) that checks
-the 8 fixed eval questions against it once, and reconcile_node (scripts/
+the answerable fixed eval questions against it once, and reconcile_node (scripts/
 orchestrator.py), which calls this at runtime for any question whenever
 it hits a nothing_found/answered split - so a genuinely new, unfamiliar
 condition or lab isn't mistaken for a graph-schema mismatch just because
