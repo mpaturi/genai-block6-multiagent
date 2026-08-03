@@ -34,10 +34,13 @@ _LAB_PROPERTY = {
     "Glucose": "latest_glucose",
     "HbA1c": "latest_hba1c",
 }
-# Public alias so other modules (scripts/vocabulary_check.py) can see
-# which lab names this repo's Cypher knows how to handle, without
-# reaching into the private _LAB_PROPERTY mapping directly.
-KNOWN_LAB_NAMES = set(_LAB_PROPERTY.keys())
+# Public alias so other modules (scripts/vocabulary_check.py) can see the
+# full lab-name -> Patient-property mapping this repo's Cypher uses,
+# without reaching into the private _LAB_PROPERTY mapping directly - lets
+# vocabulary_check.py verify each mapped property name still actually
+# exists on Patient nodes in Block 3's graph, not just trust this repo's
+# own list of lab display names.
+LAB_PROPERTY_NAMES = dict(_LAB_PROPERTY)
 _COMPARISON_OP = {"above": ">", "below": "<"}
 
 # The unbounded enumeration query - condition/value are Cypher

@@ -1,0 +1,112 @@
+[
+  {
+    "id": "q1",
+    "answerable": true,
+    "condition": "Essential hypertension",
+    "lab": "SBP",
+    "comparison": "above",
+    "value": 140,
+    "drug_a": "Lisinopril",
+    "drug_b": "Amlodipine"
+  },
+  {
+    "id": "q2",
+    "answerable": true,
+    "condition": "Osteoporosis",
+    "lab": "BMI",
+    "comparison": "below",
+    "value": 22,
+    "drug_a": "Alendronic acid",
+    "drug_b": "Naproxen"
+  },
+  {
+    "id": "q3",
+    "answerable": true,
+    "condition": "Pulmonary embolism",
+    "lab": "SBP",
+    "comparison": "below",
+    "value": 100,
+    "drug_a": "Warfarin",
+    "drug_b": "Enoxaparin"
+  },
+  {
+    "id": "q4",
+    "answerable": true,
+    "condition": "Atrial fibrillation",
+    "lab": "SBP",
+    "comparison": "above",
+    "value": 150,
+    "drug_a": "Digoxin",
+    "drug_b": "Carvedilol"
+  },
+  {
+    "id": "q5",
+    "answerable": true,
+    "condition": "Hyperlipidemia",
+    "lab": "HbA1c",
+    "comparison": "above",
+    "value": 7,
+    "drug_a": "Simvastatin",
+    "drug_b": "Metformin"
+  },
+  {
+    "id": "q6",
+    "answerable": true,
+    "condition": "Congestive heart failure",
+    "lab": "SBP",
+    "comparison": "below",
+    "value": 110,
+    "drug_a": "Furosemide",
+    "drug_b": "Carvedilol"
+  },
+  {
+    "id": "q7",
+    "answerable": true,
+    "condition": "Streptococcal pharyngitis",
+    "lab": "BMI",
+    "comparison": "below",
+    "value": 25,
+    "drug_a": "Penicillin V",
+    "drug_b": "Ciprofloxacin"
+  },
+  {
+    "id": "q8",
+    "answerable": true,
+    "condition": "Anemia",
+    "lab": "Glucose",
+    "comparison": "above",
+    "value": 150,
+    "drug_a": "Epoetin Alfa",
+    "drug_b": "Insulin"
+  },
+  {
+    "id": "q9",
+    "answerable": false,
+    "condition": "lung cancer",
+    "lab": "SBP",
+    "comparison": "above",
+    "value": 220,
+    "drug_a": "Metformin",
+    "drug_b": "Insulin"
+  },
+  {
+    "id": "q10",
+    "answerable": false,
+    "condition": "schizophrenia",
+    "lab": "Glucose",
+    "comparison": "above",
+    "value": 300,
+    "drug_a": "Simvastatin",
+    "drug_b": "Warfarin"
+  },
+  {
+    "id": "q11",
+    "answerable": false,
+    "condition": "appendicitis",
+    "lab": "HbA1c",
+    "comparison": "above",
+    "value": 13,
+    "drug_a": "Furosemide",
+    "drug_b": "Lisinopril"
+  }
+]
