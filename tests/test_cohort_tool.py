@@ -308,6 +308,33 @@ def test_adversarial_condition_value_never_makes_the_query_writable():
     _assert_read_only(driver.recorded_queries[0].text)
 
 
+class _ExplodingDriver:
+    """Proves the whitelist gate runs before any driver interaction —
+    session() raising means the rejection didn't happen early enough."""
+    def session(self, *args, **kwargs):
+        raise AssertionError("session() must never be called for a lab/comparison the whitelist rejects")
+
+
+def test_adversarial_lab_is_rejected_before_reaching_the_driver():
+    malicious_lab = "SBP AND (p) DETACH DELETE (p) //"
+
+    with pytest.raises(CohortServiceError) as exc_info:
+        query_full_cohort("Essential hypertension", malicious_lab, "above", 140, driver=_ExplodingDriver())
+
+    assert exc_info.value.detail == "invalid_lab_or_comparison"
+    assert exc_info.value.retryable is False
+
+
+def test_adversarial_comparison_is_rejected_before_reaching_the_driver():
+    malicious_comparison = "above'}) SET p.person_id = 0 //"
+
+    with pytest.raises(CohortServiceError) as exc_info:
+        query_full_cohort("Essential hypertension", "SBP", malicious_comparison, 140, driver=_ExplodingDriver())
+
+    assert exc_info.value.detail == "invalid_lab_or_comparison"
+    assert exc_info.value.retryable is False
+
+
 # --- injectable GRAPH_QUERY_TIMEOUT (Phase 8 hardening) ---------------------
 
 
@@ -400,6 +427,38 @@ def test_count_drugs_exhaustive_logs_row_count_and_runtime(caplog):
 
     info_records = [r for r in caplog.records if r.levelno == logging.INFO]
     assert any("count_drugs_exhaustive" in r.message and "2" in r.message for r in info_records)
+
+
+def test_query_full_cohort_logs_even_when_the_query_raises(caplog):
+    # The soft-alert logging exists specifically to flag slow/large
+    # queries - the one case it matters most is a query that never came
+    # back at all. Before this fix, the logging call sat as the last line
+    # inside the `with driver.session(...)` block, only reached after a
+    # successful run - a raised exception (a real timeout, among other
+    # things) jumped straight to `except`, and this never ran.
+    driver = _FakeDriver(raise_exc=RuntimeError("timeout"))
+
+    with caplog.at_level(logging.INFO, logger="scripts.cohort_tool"):
+        with pytest.raises(CohortServiceError):
+            query_full_cohort("Essential hypertension", "SBP", "above", 140, driver=driver)
+
+    assert caplog.records
+    assert any(
+        "query_full_cohort" in r.message and "did not complete" in r.message for r in caplog.records
+    )
+
+
+def test_count_drugs_exhaustive_logs_even_when_the_query_raises(caplog):
+    driver = _FakeDriver(raise_exc=RuntimeError("timeout"))
+
+    with caplog.at_level(logging.INFO, logger="scripts.cohort_tool"):
+        with pytest.raises(CohortServiceError):
+            count_drugs_exhaustive([1, 2], "Lisinopril", "Amlodipine", driver=driver)
+
+    assert caplog.records
+    assert any(
+        "count_drugs_exhaustive" in r.message and "did not complete" in r.message for r in caplog.records
+    )
 
 
 def test_query_full_cohort_warns_when_result_exceeds_the_soft_alert_patient_threshold(caplog):

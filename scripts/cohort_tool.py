@@ -62,7 +62,7 @@ def _soft_alert_patient_threshold() -> int:
     )
 
 
-def _log_query_size_and_runtime(query_name: str, row_count: int, elapsed_seconds: float) -> None:
+def _log_query_size_and_runtime(query_name: str, row_count: int | None, elapsed_seconds: float) -> None:
     """Visibility only (LLM10) - logs every call, never blocks one.
     Separate from Block 5/scripts/run_log.py's LLM cost/token tracking:
     that's one entry per run_multi_agent invocation covering the whole
@@ -71,20 +71,29 @@ def _log_query_size_and_runtime(query_name: str, row_count: int, elapsed_seconds
     execution signal (row/patient count, wall-clock runtime) logged
     through the standard `logging` module, not written to that JSONL
     file - different signal, different code path, no shared state.
-    """
-    logger.info("%s: %d rows in %.3fs", query_name, row_count, elapsed_seconds)
 
-    threshold = _soft_alert_patient_threshold()
-    if row_count > threshold:
-        logger.warning(
-            "%s returned %d rows, above the soft-alert threshold of %d "
-            "(500 patients or 25%% of the assumed total population of %d, whichever is "
-            "smaller) - result size review recommended",
-            query_name,
-            row_count,
-            threshold,
-            _ASSUMED_TOTAL_PATIENT_POPULATION,
-        )
+    row_count=None means the query did not complete (it raised, e.g. a
+    timeout) - the row-count line and threshold are skipped, but the
+    runtime threshold still runs since elapsed time is known either way.
+    Callers below always run this from a `finally` block precisely so
+    this still logs on that failure path, not just after a successful run.
+    """
+    if row_count is None:
+        logger.info("%s: did not complete after %.3fs", query_name, elapsed_seconds)
+    else:
+        logger.info("%s: %d rows in %.3fs", query_name, row_count, elapsed_seconds)
+
+        threshold = _soft_alert_patient_threshold()
+        if row_count > threshold:
+            logger.warning(
+                "%s returned %d rows, above the soft-alert threshold of %d "
+                "(500 patients or 25%% of the assumed total population of %d, whichever is "
+                "smaller) - result size review recommended",
+                query_name,
+                row_count,
+                threshold,
+                _ASSUMED_TOTAL_PATIENT_POPULATION,
+            )
     if elapsed_seconds >= _SOFT_ALERT_RUNTIME_SECONDS:
         logger.warning(
             "%s took %.3fs, at or above the soft-alert runtime threshold of %.1fs - "
@@ -186,10 +195,11 @@ def query_full_cohort(
     if lab_property is None or op is None:
         raise CohortServiceError("invalid_lab_or_comparison", retryable=False)
 
+    started_at = time.monotonic()
+    matched_ids = None
     try:
         driver = driver if driver is not None else get_driver()
         timeout = graph_query_timeout if graph_query_timeout is not None else GRAPH_QUERY_TIMEOUT
-        started_at = time.monotonic()
         with driver.session(database=NEO4J_DATABASE) as session:
             query_text = FULL_COHORT_QUERY_TEMPLATE.format(lab_property=lab_property, op=op)
             row = session.run(
@@ -198,7 +208,6 @@ def query_full_cohort(
                 value=value,
             ).single()
             matched_ids = list(row["matched_ids"])
-        _log_query_size_and_runtime("query_full_cohort", len(matched_ids), time.monotonic() - started_at)
     except Exception as exc:
         # Preserve the real error message (not just the exception's type
         # name) so it reaches the final caveat text, and only mark this
@@ -206,6 +215,12 @@ def query_full_cohort(
         # never for a bug or bad input, which retrying can't fix.
         error_kind = classify_exception(exc)
         raise CohortServiceError(str(exc), retryable=error_kind in _RETRYABLE_ERROR_KINDS)
+    finally:
+        _log_query_size_and_runtime(
+            "query_full_cohort",
+            len(matched_ids) if matched_ids is not None else None,
+            time.monotonic() - started_at,
+        )
 
     return {"patient_ids": matched_ids}
 
@@ -233,25 +248,17 @@ def count_drugs_exhaustive(
     # sending bad data to the graph.
     _validate_patient_ids(patient_ids)
 
+    started_at = time.monotonic()
+    drug_counts = None
     try:
         driver = driver if driver is not None else get_driver()
         timeout = graph_query_timeout if graph_query_timeout is not None else GRAPH_QUERY_TIMEOUT
-        started_at = time.monotonic()
         with driver.session(database=NEO4J_DATABASE) as session:
             rows = session.run(
                 Query(EXHAUSTIVE_DRUG_COUNT_QUERY, timeout=timeout),
                 person_ids=patient_ids,
             )
             drug_counts = {row["drug"]: row["patient_count"] for row in rows}
-        # The soft-alert-relevant size here is the cohort this query
-        # executed over (len(patient_ids)), not the raw number of
-        # distinct-drug rows Cypher returned (len(drug_counts), always
-        # small - at most a handful of real drugs) - the former is what
-        # drives this query's actual cost and is the same "patients"
-        # signal spec.md LLM10's threshold is about.
-        _log_query_size_and_runtime(
-            "count_drugs_exhaustive", len(patient_ids), time.monotonic() - started_at
-        )
     except Exception as exc:
         # Preserve the real error message (not just the exception's type
         # name) so it reaches the final caveat text, and only mark this
@@ -259,6 +266,18 @@ def count_drugs_exhaustive(
         # never for a bug or bad input, which retrying can't fix.
         error_kind = classify_exception(exc)
         raise CohortServiceError(str(exc), retryable=error_kind in _RETRYABLE_ERROR_KINDS)
+    finally:
+        # The soft-alert-relevant size here is the cohort this query
+        # executed over (len(patient_ids)), not the raw number of
+        # distinct-drug rows Cypher returned (len(drug_counts), always
+        # small - at most a handful of real drugs) - the former is what
+        # drives this query's actual cost and is the same "patients"
+        # signal spec.md LLM10's threshold is about.
+        _log_query_size_and_runtime(
+            "count_drugs_exhaustive",
+            len(patient_ids) if drug_counts is not None else None,
+            time.monotonic() - started_at,
+        )
 
     return {
         "drug_a_count": drug_counts.get(drug_a, 0),
