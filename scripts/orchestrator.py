@@ -136,6 +136,19 @@ def _citations_from_clinical(clinical_result: ClinicalAnswer, question: Question
     return citations
 
 
+def _sanitized_or_none(text: str | None) -> str | None:
+    """sanitize_citation_text (structural stripping only - no
+    trim_citation_snippet, since answer/caveat aren't citation excerpts
+    to keyword-trim) for clinical_result.answer/.caveat wherever they
+    flow into MultiAgentAnswer. Block 5's own answer-writing LLM call and
+    its caveat text are both free text this repo doesn't control the
+    content of - the same indirect-injection surface citations have.
+    caveat is Optional; answer never is, but this helper handles both
+    uniformly so every call site looks the same.
+    """
+    return sanitize_citation_text(text) if text is not None else None
+
+
 def _both_failed_answer(question: QuestionInput) -> tuple[ReconciliationResult, MultiAgentAnswer]:
     reconciliation = ReconciliationResult(
         counts_match=False,
@@ -217,14 +230,14 @@ def _clinical_only_degraded_answer(
     )
     final_answer = MultiAgentAnswer(
         question=clinical_result.question,
-        answer=clinical_result.answer,
+        answer=sanitize_citation_text(clinical_result.answer),
         total_patients=patients_checked,
         drug_a_count=clinical_result.graph_result.get(question.drug_a, 0),
         drug_b_count=clinical_result.graph_result.get(question.drug_b, 0),
         confidence=confidence,
         mode="clinical_only_degraded",
         citations=_citations_from_clinical(clinical_result, question),
-        caveat=clinical_result.caveat,
+        caveat=_sanitized_or_none(clinical_result.caveat),
         discrepancy_flag=False,
     )
     return reconciliation, final_answer
@@ -330,6 +343,7 @@ def _both_answered_reconciled_answer(
     clinical_drug_a_count = clinical_result.graph_result.get(question.drug_a, 0)
     clinical_drug_b_count = clinical_result.graph_result.get(question.drug_b, 0)
     citations = _citations_from_clinical(clinical_result, question)
+    sanitized_answer = sanitize_citation_text(clinical_result.answer)
 
     if cohort_result.total_patients_matched > _ROLE1_TOP_K_CEILING:
         # Role 1's count is known-incomplete by definition once the true
@@ -352,7 +366,7 @@ def _both_answered_reconciled_answer(
         )
         final_answer = MultiAgentAnswer(
             question=clinical_result.question,
-            answer=clinical_result.answer,
+            answer=sanitized_answer,
             total_patients=cohort_result.total_patients_matched,
             drug_a_count=cohort_result.drug_a_count,
             drug_b_count=cohort_result.drug_b_count,
@@ -377,7 +391,7 @@ def _both_answered_reconciled_answer(
         )
         final_answer = MultiAgentAnswer(
             question=clinical_result.question,
-            answer=clinical_result.answer,
+            answer=sanitized_answer,
             total_patients=cohort_result.total_patients_matched,
             drug_a_count=cohort_result.drug_a_count,
             drug_b_count=cohort_result.drug_b_count,
@@ -405,7 +419,7 @@ def _both_answered_reconciled_answer(
     )
     final_answer = MultiAgentAnswer(
         question=clinical_result.question,
-        answer=clinical_result.answer,
+        answer=sanitized_answer,
         total_patients=cohort_result.total_patients_matched,
         drug_a_count=cohort_result.drug_a_count,
         drug_b_count=cohort_result.drug_b_count,
