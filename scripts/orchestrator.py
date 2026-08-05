@@ -29,6 +29,7 @@ from scripts.schemas import (
     MultiAgentState,
     ReconciliationResult,
 )
+from scripts.state_validation import validate_state_update
 from scripts.vocabulary_check import get_known_vocabulary
 
 # clinical_cost_info's shape when Role 1 never successfully returned
@@ -86,7 +87,16 @@ async def _run_branch(branch_name: str, call_fn, on_success, error_keys: tuple[s
         raw_result = await asyncio.wait_for(
             asyncio.wrap_future(concurrent_future), timeout=_BRANCH_TIMEOUT_SECONDS
         )
-        return on_success(raw_result)
+        update = on_success(raw_result)
+        # State-boundary check (docs/tasks.md "Block 6 - state
+        # validation"): call_fn is trusted to never raise on its own
+        # documented failure modes, but not to have written well-typed
+        # state - a compromised or simply buggy agent function could
+        # still hand on_success something reconcile_node would otherwise
+        # trust unvalidated. A violation here is marked suspect and
+        # routed into the exact same degraded-mode bucket a real
+        # exception already takes, just below.
+        return validate_state_update(branch_name, update, error_key=error_key, error_kind_key=error_kind_key)
     except Exception as exc:
         # Second line of defense (docs/plan.md §5): run_agent/
         # run_cohort_agent are trusted to never raise on their own
@@ -488,7 +498,16 @@ async def run_multi_agent_async(
 
     def reconcile_node_safe(state: MultiAgentState) -> dict:
         try:
-            return reconcile_node(state)
+            update = reconcile_node(state)
+            # State-boundary check, same as clinical_node/cohort_node's
+            # validate_state_update call in _run_branch above (docs/tasks.md
+            # "Block 6 - state validation"). No error_key/error_kind_key
+            # here: reconcile_node's own well-typed pydantic construction
+            # already guards against a bad *type* (a mismatch would have
+            # raised before this line, caught below) - this only catches an
+            # unexpected key/shape, so a stray field is dropped and logged
+            # rather than blocking the rest of an otherwise-valid update.
+            return validate_state_update("reconcile_node", update)
         except Exception as exc:
             # Same second line of defense as clinical_node/cohort_node
             # (plan.md §5), extended to reconcile_node itself - this is

@@ -460,6 +460,29 @@ def test_reconcile_node_wraps_a_real_vocabulary_check_failure_and_degrades_grace
     assert result.confidence == "low"
 
 
+def test_malformed_clinical_write_is_caught_logged_and_marked_suspect(caplog):
+    # clinical_agent_fn is compromised/buggy in a way run_agent's own
+    # documented contract never produces on its own: its first tuple
+    # element isn't a real ClinicalAnswer at all. Proves
+    # scripts/state_validation.py is actually wired into the real
+    # run_multi_agent_async path (see tests/test_state_validation.py for
+    # the isolated unit tests on validate_state_update itself), not just
+    # correct in isolation.
+    clinical_fn = _fn(("not a ClinicalAnswer object", True, _DUMMY_COST_INFO))
+    cohort_fn = _fn(_cohort_result(12, 8, 4))
+
+    with caplog.at_level(logging.WARNING, logger="scripts.state_validation"):
+        result = _run(clinical_fn, cohort_fn)
+
+    # The malformed value must never have been trusted into reconciliation -
+    # it's routed into the same degraded-mode bucket a real clinical_node
+    # exception already takes, not silently used as-is.
+    assert result.mode == "cohort_only_degraded"
+    assert result.total_patients == 12
+    assert any("clinical" in record.message for record in caplog.records)
+    assert any(record.levelno == logging.WARNING for record in caplog.records)
+
+
 def test_sync_entry_point_delegates_to_the_async_implementation():
     clinical_fn = _fn(
         (_clinical_answer([1, 2], {"Lisinopril": 1, "Amlodipine": 1}), True, _DUMMY_COST_INFO)
