@@ -25,7 +25,21 @@ live here, applied together at the one place citations are constructed
 import re
 
 _CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-_ROLE_MARKER_RE = re.compile(r"(?im)^\s*(system|human|assistant|user)\s*:\s*")
+# Matches a role marker at start-of-line (^, with (?m) - kept in case a
+# newline ever does appear) OR right after sentence-ending punctuation
+# (./!/?) - the realistic shape for this corpus. Citation.snippet comes
+# from Block 1's note-generation templates by way of Block 4's chunking
+# (see this module's docstring), and that pipeline never emits a newline
+# inside a note - a marker planted mid-note only ever follows a sentence
+# ending, never a line start (same finding genai-block4-rag-eval's own
+# sanitize.py fix made against its corpus). The lookbehind is zero-width,
+# so the punctuation itself is never consumed/stripped - only the role
+# marker and colon are removed. A plain mid-sentence word immediately
+# followed by a colon (e.g. "Cardiovascular system: normal.") is NOT
+# matched, since neither alternative is satisfied there - "system" isn't
+# at start-of-line, and the character before it (through any run of
+# whitespace) is an ordinary word character, not one of .!?.
+_ROLE_MARKER_RE = re.compile(r"(?im)(?:^|(?<=[.!?]))\s*(system|human|assistant|user)\s*:\s*")
 _CHAT_DELIMITER_RE = re.compile(
     r"(?i)\[/?(?:INST|SYS)\]|<\|.*?\|>|#{2,}\s*(?:instructions?|response)\b"
 )
