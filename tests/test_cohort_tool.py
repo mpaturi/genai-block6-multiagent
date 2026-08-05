@@ -32,6 +32,7 @@ Security constraints under test (spec.md §2):
 - Read-only: MATCH/RETURN only, no CREATE/MERGE/DELETE/SET.
 """
 import inspect
+import logging
 import re
 
 import pytest
@@ -370,3 +371,98 @@ def test_count_drugs_exhaustive_wraps_a_get_driver_failure_as_cohort_service_err
 
     with pytest.raises(CohortServiceError):
         count_drugs_exhaustive([1, 2, 3], "Lisinopril", "Amlodipine")
+
+
+# --- query-size/runtime visibility logging (docs/tasks.md "Cohort agent
+# injection test and query-size visibility", spec.md LLM10) -------------
+#
+# Flagging only, never enforcing: a hard cap would reintroduce the
+# undercounting problem the Cohort agent exists to solve (spec.md LLM10's
+# own "Target" decision), so every case below must still return the real
+# result even when a soft-alert condition fires.
+
+
+def test_query_full_cohort_logs_row_count_and_runtime(caplog):
+    driver = _FakeDriver(single_value={"matched_ids": [1, 2, 3]})
+
+    with caplog.at_level(logging.INFO, logger="scripts.cohort_tool"):
+        query_full_cohort("Essential hypertension", "SBP", "above", 140, driver=driver)
+
+    info_records = [r for r in caplog.records if r.levelno == logging.INFO]
+    assert any("query_full_cohort" in r.message and "3" in r.message for r in info_records)
+
+
+def test_count_drugs_exhaustive_logs_row_count_and_runtime(caplog):
+    driver = _FakeDriver(rows=[{"drug": "Lisinopril", "patient_count": 2}])
+
+    with caplog.at_level(logging.INFO, logger="scripts.cohort_tool"):
+        count_drugs_exhaustive([1, 2], "Lisinopril", "Amlodipine", driver=driver)
+
+    info_records = [r for r in caplog.records if r.levelno == logging.INFO]
+    assert any("count_drugs_exhaustive" in r.message and "2" in r.message for r in info_records)
+
+
+def test_query_full_cohort_warns_when_result_exceeds_the_soft_alert_patient_threshold(caplog):
+    large_result = list(range(1, cohort_tool._soft_alert_patient_threshold() + 2))
+    driver = _FakeDriver(single_value={"matched_ids": large_result})
+
+    with caplog.at_level(logging.WARNING, logger="scripts.cohort_tool"):
+        result = query_full_cohort("Essential hypertension", "SBP", "above", 140, driver=driver)
+
+    # Flagged, not blocked - the real, full result is still returned.
+    assert result["patient_ids"] == large_result
+    assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+
+def test_query_full_cohort_does_not_warn_under_the_soft_alert_threshold(caplog):
+    driver = _FakeDriver(single_value={"matched_ids": [1, 2, 3]})
+
+    with caplog.at_level(logging.WARNING, logger="scripts.cohort_tool"):
+        query_full_cohort("Essential hypertension", "SBP", "above", 140, driver=driver)
+
+    assert not any(r.levelno == logging.WARNING for r in caplog.records)
+
+
+def test_count_drugs_exhaustive_warns_when_cohort_size_exceeds_the_soft_alert_threshold(caplog):
+    large_cohort = list(range(1, cohort_tool._soft_alert_patient_threshold() + 2))
+    driver = _FakeDriver(rows=[{"drug": "Lisinopril", "patient_count": len(large_cohort)}])
+
+    with caplog.at_level(logging.WARNING, logger="scripts.cohort_tool"):
+        result = count_drugs_exhaustive(large_cohort, "Lisinopril", "Amlodipine", driver=driver)
+
+    # Flagged, not blocked.
+    assert result["drug_a_count"] == len(large_cohort)
+    assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+
+def test_soft_alert_patient_threshold_is_the_smaller_of_the_two_defaults():
+    # spec.md LLM10: 500 patients or 25% of total population, whichever
+    # is smaller.
+    threshold = cohort_tool._soft_alert_patient_threshold()
+    assert threshold == min(
+        cohort_tool._SOFT_ALERT_MAX_PATIENTS,
+        round(cohort_tool._ASSUMED_TOTAL_PATIENT_POPULATION * cohort_tool._SOFT_ALERT_POPULATION_FRACTION),
+    )
+
+
+def test_slow_query_logs_a_runtime_soft_alert(monkeypatch, caplog):
+    # A genuinely slow call is exercised for real in
+    # test_a_genuinely_slow_query_surfaces_as_a_timeout_not_a_hang-style
+    # tests elsewhere in this repo (tests/test_vocabulary_check.py) - here
+    # the runtime-threshold *decision* itself is unit-tested directly via
+    # the logging helper, faking elapsed time rather than actually
+    # sleeping, since what's under test is the comparison logic, not
+    # Neo4j's own timing.
+    with caplog.at_level(logging.WARNING, logger="scripts.cohort_tool"):
+        cohort_tool._log_query_size_and_runtime("query_full_cohort", 3, cohort_tool._SOFT_ALERT_RUNTIME_SECONDS)
+
+    assert any("query_full_cohort" in r.message and "runtime" in r.message.lower() for r in caplog.records)
+
+
+def test_fast_query_does_not_log_a_runtime_soft_alert(caplog):
+    with caplog.at_level(logging.WARNING, logger="scripts.cohort_tool"):
+        cohort_tool._log_query_size_and_runtime(
+            "query_full_cohort", 3, cohort_tool._SOFT_ALERT_RUNTIME_SECONDS - 1
+        )
+
+    assert not any(r.levelno == logging.WARNING for r in caplog.records)

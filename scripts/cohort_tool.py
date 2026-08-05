@@ -12,7 +12,9 @@ raw user input, same as Block 5's own precedent.
 Read-only throughout: MATCH/RETURN only, no CREATE/MERGE/DELETE/SET.
 """
 import functools
+import logging
 import os
+import time
 
 from dotenv import load_dotenv
 from neo4j import GraphDatabase, Query
@@ -20,6 +22,8 @@ from neo4j import GraphDatabase, Query
 from scripts.error_classification import classify_exception
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 NEO4J_URI = os.environ.get("NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.environ.get("NEO4J_USER", "neo4j")
@@ -29,6 +33,66 @@ NEO4J_DATABASE = os.environ.get("NEO4J_DATABASE", "neo4j")
 # Matches Block 5's count_drugs precedent (graph_tool.py) - the starting
 # value for the Cypher call's own timeout (docs/plan.md §7).
 GRAPH_QUERY_TIMEOUT = 10
+
+# Soft-alert thresholds for the Cohort agent's exhaustive queries (see
+# genai-block7-security's docs/spec.md LLM10 section: "Unbounded
+# Consumption"). This agent is exhaustive by design - no top_k ceiling,
+# that's the point, it's what closes Block 5's undercounting gap - so a
+# hard cap here would reintroduce the exact problem this agent exists to
+# solve. Instead, an anomalously large or slow query is only flagged in
+# the log (_log_query_size_and_runtime below), never blocked.
+#
+# Defaults, not fixed forever - spec.md's own open follow-up: these were
+# chosen without knowing the real total patient population size (the
+# largest cohort seen in eval so far is 99 patients), well below either
+# number below. Tune _ASSUMED_TOTAL_PATIENT_POPULATION once that's
+# confirmed against Block 3's real graph.
+_SOFT_ALERT_MAX_PATIENTS = 500
+_SOFT_ALERT_POPULATION_FRACTION = 0.25
+_ASSUMED_TOTAL_PATIENT_POPULATION = 10_000
+_SOFT_ALERT_RUNTIME_SECONDS = 5.0
+
+
+def _soft_alert_patient_threshold() -> int:
+    """500 patients or 25% of the (assumed) total population, whichever
+    is smaller - spec.md LLM10's exact rule."""
+    return min(
+        _SOFT_ALERT_MAX_PATIENTS,
+        round(_ASSUMED_TOTAL_PATIENT_POPULATION * _SOFT_ALERT_POPULATION_FRACTION),
+    )
+
+
+def _log_query_size_and_runtime(query_name: str, row_count: int, elapsed_seconds: float) -> None:
+    """Visibility only (LLM10) - logs every call, never blocks one.
+    Separate from Block 5/scripts/run_log.py's LLM cost/token tracking:
+    that's one entry per run_multi_agent invocation covering the whole
+    orchestrator (cost_usd/tokens from Block 5's LLM call, via
+    MultiAgentState.clinical_cost_info); this is a per-Cypher-query-
+    execution signal (row/patient count, wall-clock runtime) logged
+    through the standard `logging` module, not written to that JSONL
+    file - different signal, different code path, no shared state.
+    """
+    logger.info("%s: %d rows in %.3fs", query_name, row_count, elapsed_seconds)
+
+    threshold = _soft_alert_patient_threshold()
+    if row_count > threshold:
+        logger.warning(
+            "%s returned %d rows, above the soft-alert threshold of %d "
+            "(500 patients or 25%% of the assumed total population of %d, whichever is "
+            "smaller) - result size review recommended",
+            query_name,
+            row_count,
+            threshold,
+            _ASSUMED_TOTAL_PATIENT_POPULATION,
+        )
+    if elapsed_seconds >= _SOFT_ALERT_RUNTIME_SECONDS:
+        logger.warning(
+            "%s took %.3fs, at or above the soft-alert runtime threshold of %.1fs - "
+            "performance review recommended",
+            query_name,
+            elapsed_seconds,
+            _SOFT_ALERT_RUNTIME_SECONDS,
+        )
 
 _LAB_PROPERTY = {
     "SBP": "latest_sbp",
@@ -125,6 +189,7 @@ def query_full_cohort(
     try:
         driver = driver if driver is not None else get_driver()
         timeout = graph_query_timeout if graph_query_timeout is not None else GRAPH_QUERY_TIMEOUT
+        started_at = time.monotonic()
         with driver.session(database=NEO4J_DATABASE) as session:
             query_text = FULL_COHORT_QUERY_TEMPLATE.format(lab_property=lab_property, op=op)
             row = session.run(
@@ -133,6 +198,7 @@ def query_full_cohort(
                 value=value,
             ).single()
             matched_ids = list(row["matched_ids"])
+        _log_query_size_and_runtime("query_full_cohort", len(matched_ids), time.monotonic() - started_at)
     except Exception as exc:
         # Preserve the real error message (not just the exception's type
         # name) so it reaches the final caveat text, and only mark this
@@ -170,12 +236,22 @@ def count_drugs_exhaustive(
     try:
         driver = driver if driver is not None else get_driver()
         timeout = graph_query_timeout if graph_query_timeout is not None else GRAPH_QUERY_TIMEOUT
+        started_at = time.monotonic()
         with driver.session(database=NEO4J_DATABASE) as session:
             rows = session.run(
                 Query(EXHAUSTIVE_DRUG_COUNT_QUERY, timeout=timeout),
                 person_ids=patient_ids,
             )
             drug_counts = {row["drug"]: row["patient_count"] for row in rows}
+        # The soft-alert-relevant size here is the cohort this query
+        # executed over (len(patient_ids)), not the raw number of
+        # distinct-drug rows Cypher returned (len(drug_counts), always
+        # small - at most a handful of real drugs) - the former is what
+        # drives this query's actual cost and is the same "patients"
+        # signal spec.md LLM10's threshold is about.
+        _log_query_size_and_runtime(
+            "count_drugs_exhaustive", len(patient_ids), time.monotonic() - started_at
+        )
     except Exception as exc:
         # Preserve the real error message (not just the exception's type
         # name) so it reaches the final caveat text, and only mark this
