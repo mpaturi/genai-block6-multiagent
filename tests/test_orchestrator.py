@@ -521,6 +521,49 @@ def test_reconcile_error_answer_itself_raising_still_returns_a_valid_answer(monk
     assert result.citations == []
 
 
+def test_reconcile_node_hang_past_the_timeout_still_returns_a_valid_answer(monkeypatch):
+    # The actual regression this fix targets (docs/tasks.md "Block 6 -
+    # state validation" follow-up): before this fix, reconcile_node_safe
+    # had no timeout of its own - a reconcile_node call that hung (e.g. a
+    # wedged Neo4j that stopped enforcing its own Query timeout) would
+    # hang run_multi_agent_async indefinitely, outside every ceiling this
+    # repo has. A fake sleep stands in for that hang here - a real,
+    # genuinely slow query is already covered elsewhere
+    # (tests/test_vocabulary_check.py's real-timeout test); this test's
+    # job is only to prove reconcile_node_safe's own wait_for wrapping
+    # actually fires and escalates, not to re-prove Neo4j's timeout
+    # mechanics.
+    #
+    # The fake sleeps far longer (3s) than the mocked timeout (0.2s) on
+    # purpose, and the elapsed-time assertion below is a real, self-
+    # verifying lower/upper bound - not just an observation made once by
+    # hand. If reconcile_node_safe's wait_for wrapping were ever removed
+    # in the future, this call would block for the full 3s and this
+    # assertion would fail outright, not just make the test run slower.
+    monkeypatch.setattr(orchestrator, "_RECONCILE_TIMEOUT_SECONDS", 0.2)
+
+    def _hanging_reconcile_node(state):
+        time.sleep(3)
+        return {"reconciliation": None, "final_answer": None}
+
+    monkeypatch.setattr(orchestrator, "reconcile_node", _hanging_reconcile_node)
+
+    clinical_fn = _fn(
+        (_clinical_answer([1, 2], {"Lisinopril": 1, "Amlodipine": 1}), True, _DUMMY_COST_INFO)
+    )
+    cohort_fn = _fn(_cohort_result(2, 1, 1))
+
+    started_at = time.monotonic()
+    result = _run(clinical_fn, cohort_fn)
+    elapsed = time.monotonic() - started_at
+
+    assert isinstance(result, MultiAgentAnswer)
+    assert result.mode == "both_failed"
+    # Bounded by the mocked _RECONCILE_TIMEOUT_SECONDS (0.2s), nowhere
+    # near the fake call's real 3s sleep.
+    assert elapsed < 2.0
+
+
 def test_final_answer_dropped_by_state_validation_is_escalated_to_the_fallback(monkeypatch):
     # The actual regression this fix targets (docs/tasks.md "Block 6 -
     # state validation" follow-up): validate_state_update silently drops
