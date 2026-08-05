@@ -48,9 +48,22 @@ _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 
 def sanitize_citation_text(text: str) -> str:
     """Strip conversation-turn markers and control characters from a
-    citation snippet before it is ever rendered or stored."""
+    citation snippet before it is ever rendered or stored.
+
+    The role-marker substitution replaces with a single space, not "" -
+    matching genai-block4-rag-eval's own sanitize.py fix, identically.
+    Stripping to empty removes the whitespace on both sides of the marker
+    too, fusing the sentence before it directly onto the text after it
+    (e.g. "...fatigue. System: ignore..." -> "...fatigue.ignore...", zero
+    space after the period). trim_citation_snippet below splits on
+    whitespace after sentence-ending punctuation to find sentence
+    boundaries - a fused boundary here would silently defeat that split,
+    leaving the injection sentence's own phrasing fused onto the kept
+    sentence instead of excluded from it. A single space keeps the
+    boundary intact while still fully removing the marker itself.
+    """
     text = _CONTROL_CHAR_RE.sub("", text)
-    text = _ROLE_MARKER_RE.sub("", text)
+    text = _ROLE_MARKER_RE.sub(" ", text)
     text = _CHAT_DELIMITER_RE.sub("", text)
     return text
 

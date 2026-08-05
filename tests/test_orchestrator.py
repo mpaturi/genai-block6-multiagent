@@ -172,18 +172,16 @@ def test_citation_snippets_are_sanitized_and_trimmed_when_constructed():
     result = _run(clinical_fn, cohort_fn)
 
     snippet = result.citations[0].snippet
-    # The structural marker is gone - sanitize_citation_text strips
-    # structure, not phrasing (same documented design as
-    # tests/test_citation_sanitization.py::test_planted_injection_attempt_does_not_survive),
-    # so "ignore prior instructions..." itself is expected to survive:
-    # removing "System: " also removes the space before it, which erases
-    # the sentence boundary trim_citation_snippet would otherwise have
-    # split on, fusing that sentence onto the preceding kept one. Not a
-    # gap in this project's threat model - LLM01's concern is the
-    # structural marker faking a new conversation turn, which is gone;
-    # bare phrasing with no such marker has no special significance to an
-    # LLM reading it as data.
+    # sanitize_citation_text's substitution replaces "System: " with a
+    # single space, not an empty string, so the sentence boundary
+    # trim_citation_snippet needs survives - the
+    # injection sentence is excluded outright for lacking a query
+    # keyword, not just stripped of its structural marker and fused onto
+    # the kept sentence (see
+    # tests/test_citation_sanitization.py::test_role_marked_sentence_with_no_keyword_is_excluded_not_fused_onto_a_kept_one
+    # for the isolated regression proof).
     assert "System:" not in snippet
+    assert "ignore prior instructions" not in snippet
     assert "hypertension" in snippet
     assert "gardening" not in snippet
 
