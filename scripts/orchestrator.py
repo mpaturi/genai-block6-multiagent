@@ -190,7 +190,7 @@ def _cohort_only_degraded_answer(
     # an LLM call here would reintroduce the exact nondeterminism/cost
     # Role 1's own failure was supposed to remove, and Role 1's LLM is
     # precisely what just failed in this mode.
-    answer_text = (
+    answer_text = sanitize_citation_text(
         f"Of {cohort_result.total_patients_matched} patients with {question.condition} "
         f"and {question.lab} {question.comparison} {question.value}, "
         f"{cohort_result.drug_a_count} are on {question.drug_a} and "
