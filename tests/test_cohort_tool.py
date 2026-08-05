@@ -135,15 +135,20 @@ class _FakeResult:
 
 
 class _FakeSession:
-    def __init__(self, raise_exc=None, single_value=None, rows=None, recorded_queries=None):
+    def __init__(
+        self, raise_exc=None, single_value=None, rows=None, recorded_queries=None, recorded_params=None
+    ):
         self._raise_exc = raise_exc
         self._single_value = single_value
         self._rows = rows
         self._recorded_queries = recorded_queries
+        self._recorded_params = recorded_params
 
     def run(self, query, **params):
         if self._recorded_queries is not None:
             self._recorded_queries.append(query)
+        if self._recorded_params is not None:
+            self._recorded_params.append(params)
         if self._raise_exc is not None:
             raise self._raise_exc
         return _FakeResult(single_value=self._single_value, rows=self._rows)
@@ -163,6 +168,11 @@ class _FakeDriver:
         # Populated with each Query object session.run() was called with,
         # so tests can inspect e.g. .timeout without a live driver.
         self.recorded_queries = []
+        # Populated with each session.run() call's **params dict (the
+        # actual Cypher $parameter bindings) - separate from
+        # recorded_queries so a test can assert on query *structure* and
+        # parameter *values* independently.
+        self.recorded_params = []
 
     def session(self, database=None):
         return _FakeSession(
@@ -170,6 +180,7 @@ class _FakeDriver:
             single_value=self._single_value,
             rows=self._rows,
             recorded_queries=self.recorded_queries,
+            recorded_params=self.recorded_params,
         )
 
 
@@ -241,6 +252,59 @@ def test_count_drugs_exhaustive_wraps_an_unknown_exception_as_non_retryable():
     except CohortServiceError as exc:
         assert exc.detail == "unexpected bug"
         assert exc.retryable is False
+
+
+# --- dynamic injection test (docs/tasks.md "Cohort agent injection test
+# and query-size visibility") ------------------------------------------
+#
+# The tests above are static: they inspect the fixed query-text constants
+# and this module's source, proving condition/value are never written as
+# f-string/.format() placeholders anywhere in the code today. This test is
+# the dynamic counterpart Block 5's own test suite doesn't have either
+# (genai-block5-agent/tests/test_graph_tool.py has no equivalent): it
+# actually calls query_full_cohort with an adversarial condition value and
+# inspects what really reached the driver - the query *text* the fake
+# received (must be byte-identical to the fixed template, completely
+# unaffected by the malicious input) and the *parameter dict* the fake
+# received (where the malicious value must land, since binding it as a
+# Cypher $parameter - not string formatting - is what makes it inert).
+
+
+def test_adversarial_condition_value_is_bound_as_a_parameter_never_interpolated():
+    # A value that would break out of the query text's string literal and
+    # inject a second write clause, if it were ever concatenated/formatted
+    # into the Cypher instead of bound as a $parameter.
+    malicious_condition = "Essential hypertension'}) DETACH DELETE (p) //"
+    driver = _FakeDriver(single_value={"matched_ids": []})
+
+    query_full_cohort(malicious_condition, "SBP", "above", 140, driver=driver)
+
+    sent_query = driver.recorded_queries[0]
+    expected_query_text = FULL_COHORT_QUERY_TEMPLATE.format(lab_property="latest_sbp", op=">")
+    # The query text sent to the driver is exactly the fixed template,
+    # byte-for-byte - the malicious value never touched it.
+    assert sent_query.text == expected_query_text
+    assert "DETACH DELETE" not in sent_query.text
+    assert "//" not in sent_query.text
+
+    # The malicious string reaches the driver only as a bound parameter
+    # value, unmodified - the one place it's allowed to be, since the
+    # driver (not Python string formatting) is responsible for treating
+    # it as inert data rather than executable Cypher.
+    assert driver.recorded_params[0]["condition"] == malicious_condition
+    assert driver.recorded_params[0]["value"] == 140
+
+
+def test_adversarial_condition_value_never_makes_the_query_writable():
+    # Same adversarial input, checked against the read-only invariant
+    # itself: even with a hostile condition value, the query the driver
+    # actually executes must still contain no write keyword.
+    malicious_condition = "x'}) SET p.person_id = 0 //"
+    driver = _FakeDriver(single_value={"matched_ids": []})
+
+    query_full_cohort(malicious_condition, "SBP", "above", 140, driver=driver)
+
+    _assert_read_only(driver.recorded_queries[0].text)
 
 
 # --- injectable GRAPH_QUERY_TIMEOUT (Phase 8 hardening) ---------------------
