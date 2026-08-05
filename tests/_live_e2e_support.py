@@ -14,6 +14,7 @@ their own real code - never reimplemented inline.
 import json
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -24,7 +25,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SIBLINGS_ROOT = REPO_ROOT.parent
 BLOCK1_ROOT = SIBLINGS_ROOT / "genai-block1-batch-pipeline"
 BLOCK4_CHECKOUT = SIBLINGS_ROOT / "genai-block4-rag-eval"
-BLOCK4_PYTHON = BLOCK4_CHECKOUT / ".venv" / "Scripts" / "python.exe"
+# venv layout differs by OS - Scripts/python.exe on Windows, bin/python
+# everywhere else - so this test can actually run on a non-Windows dev
+# machine or CI runner, not just the Windows box it was first written on.
+BLOCK4_PYTHON = (
+    BLOCK4_CHECKOUT / ".venv" / "Scripts" / "python.exe"
+    if sys.platform == "win32"
+    else BLOCK4_CHECKOUT / ".venv" / "bin" / "python"
+)
 
 # Block 4's sibling repo currently has PR #13 (branch phase-11-chunk-
 # sanitization-and-key-scoping) checked out, not main - confirmed via `gh
