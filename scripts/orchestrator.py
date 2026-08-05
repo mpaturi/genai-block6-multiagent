@@ -37,6 +37,31 @@ from scripts.vocabulary_check import get_known_vocabulary
 # nothing to log a real cost for on those paths (docs/plan.md §9).
 _ZERO_COST_INFO = {"cost_usd": 0.0, "input_tokens": 0, "output_tokens": 0}
 
+# Last-resort fallback for reconcile_node_safe (docs/tasks.md "Block 6 -
+# state validation"): used only if _reconcile_error_answer itself raises
+# while handling an earlier exception - no computed fields (it can't
+# trust question/exc details it may not have been able to read either),
+# just enough for run_multi_agent to still return a valid MultiAgentAnswer
+# instead of letting the exception escape.
+_RECONCILE_HELPER_FAILURE_RECONCILIATION = ReconciliationResult(
+    counts_match=False,
+    authoritative_source="neither",
+    discrepancy_flag=False,
+    notes="Reconciliation failed, and the fallback error handler itself failed.",
+)
+_RECONCILE_HELPER_FAILURE_ANSWER = MultiAgentAnswer(
+    question="<unknown>",
+    answer="The orchestrator encountered an internal error and could not produce an answer.",
+    total_patients=0,
+    drug_a_count=0,
+    drug_b_count=0,
+    confidence="low",
+    mode="both_failed",
+    citations=[],
+    caveat=None,
+    discrepancy_flag=False,
+)
+
 logger = logging.getLogger(__name__)
 
 # Best-effort supervisory ceiling per branch (docs/plan.md §7) - nearly 2x
@@ -513,7 +538,18 @@ async def run_multi_agent_async(
             # (plan.md §5), extended to reconcile_node itself - this is
             # what actually catches _vocabulary_split_answer's live
             # get_known_vocabulary() Cypher call failing.
-            reconciliation, final_answer = _reconcile_error_answer(state["question"], exc)
+            try:
+                reconciliation, final_answer = _reconcile_error_answer(state["question"], exc)
+            except Exception:
+                # _reconcile_error_answer is itself trusted to never raise
+                # under normal conditions, but isn't proven to be immune -
+                # if it does, this is the actual last line of defense
+                # standing between it and run_multi_agent's caller.
+                logger.error(
+                    "reconcile_node_safe's own error handler failed while handling %r", exc, exc_info=True
+                )
+                reconciliation = _RECONCILE_HELPER_FAILURE_RECONCILIATION
+                final_answer = _RECONCILE_HELPER_FAILURE_ANSWER
             return {"reconciliation": reconciliation, "final_answer": final_answer}
 
     # Built fresh per call (mirroring Block 5's run_agent) so each

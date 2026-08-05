@@ -48,7 +48,7 @@ from block5_agent.schemas import ClinicalAnswer
 
 from scripts import orchestrator
 from scripts.orchestrator import run_multi_agent, run_multi_agent_async
-from scripts.schemas import CohortResult, Citation
+from scripts.schemas import CohortResult, Citation, MultiAgentAnswer
 from block5_agent.schemas import QuestionInput
 
 QUESTION = QuestionInput(
@@ -481,6 +481,44 @@ def test_malformed_clinical_write_is_caught_logged_and_marked_suspect(caplog):
     assert result.total_patients == 12
     assert any("clinical" in record.message for record in caplog.records)
     assert any(record.levelno == logging.WARNING for record in caplog.records)
+
+
+def test_reconcile_error_answer_itself_raising_still_returns_a_valid_answer(monkeypatch):
+    # Forces the second, inner layer of defense (docs/tasks.md "Block 6 -
+    # state validation"): even if _reconcile_error_answer - the fallback
+    # for a reconcile_node failure - itself raises, run_multi_agent_async
+    # must still return a real MultiAgentAnswer, never let the exception
+    # escape. Reuses the same real vocabulary-check failure as the test
+    # above to reach reconcile_node_safe's except block in the first
+    # place, then breaks the fallback handler itself on top of that.
+    from scripts import vocabulary_check
+
+    monkeypatch.setattr(vocabulary_check, "_cached_vocabulary", None)
+    monkeypatch.setattr(vocabulary_check, "_cached_at", 0.0)
+
+    def _raising_get_driver():
+        raise RuntimeError("cannot connect to Neo4j")
+
+    monkeypatch.setattr(vocabulary_check, "get_driver", _raising_get_driver)
+
+    def _raising_reconcile_error_answer(question, exc):
+        raise RuntimeError("the fallback handler is broken too")
+
+    monkeypatch.setattr(orchestrator, "_reconcile_error_answer", _raising_reconcile_error_answer)
+
+    clinical_fn = _fn((_clinical_answer([], {}, outcome="nothing_found"), False, _DUMMY_COST_INFO))
+    cohort_fn = _fn(_cohort_result(12, 8, 4))
+
+    # If this exception ever escaped, the call below would fail with an
+    # uncaught RuntimeError rather than a normal assertion failure.
+    result = _run(clinical_fn, cohort_fn)
+
+    assert isinstance(result, MultiAgentAnswer)
+    assert result.mode == "both_failed"
+    assert result.confidence == "low"
+    # A fixed literal, no computed fields, per the task's own wording.
+    assert result.total_patients == 0
+    assert result.citations == []
 
 
 def test_sync_entry_point_delegates_to_the_async_implementation():
