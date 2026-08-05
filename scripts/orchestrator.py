@@ -532,7 +532,24 @@ async def run_multi_agent_async(
             # raised before this line, caught below) - this only catches an
             # unexpected key/shape, so a stray field is dropped and logged
             # rather than blocking the rest of an otherwise-valid update.
-            return validate_state_update("reconcile_node", update)
+            validated = validate_state_update("reconcile_node", update)
+            if validated.get("final_answer") is None:
+                # A validation violation on final_answer gets silently
+                # dropped by validate_state_update above (no error_key
+                # means "drop the bad field, keep the rest") - but
+                # final_answer isn't optional the way the other fields
+                # are: state's initial value is already None, so letting
+                # this drop stand would leave that None in place all the
+                # way to run_multi_agent_async's unguarded
+                # `final_answer.question` access below, defeating the
+                # exact "never raises" contract this phase exists to
+                # guarantee. Escalate through the same fallback exceptions
+                # already use, rather than a second fallback path.
+                raise ValueError(
+                    "reconcile_node's final_answer failed state validation "
+                    "and was dropped - no valid answer to return"
+                )
+            return validated
         except Exception as exc:
             # Same second line of defense as clinical_node/cohort_node
             # (plan.md §5), extended to reconcile_node itself - this is

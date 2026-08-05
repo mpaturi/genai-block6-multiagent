@@ -48,7 +48,7 @@ from block5_agent.schemas import ClinicalAnswer
 
 from scripts import orchestrator
 from scripts.orchestrator import run_multi_agent, run_multi_agent_async
-from scripts.schemas import CohortResult, Citation, MultiAgentAnswer
+from scripts.schemas import CohortResult, Citation, MultiAgentAnswer, ReconciliationResult
 from block5_agent.schemas import QuestionInput
 
 QUESTION = QuestionInput(
@@ -519,6 +519,83 @@ def test_reconcile_error_answer_itself_raising_still_returns_a_valid_answer(monk
     # A fixed literal, no computed fields, per the task's own wording.
     assert result.total_patients == 0
     assert result.citations == []
+
+
+def test_final_answer_dropped_by_state_validation_is_escalated_to_the_fallback(monkeypatch):
+    # The actual regression this fix targets (docs/tasks.md "Block 6 -
+    # state validation" follow-up): validate_state_update silently drops
+    # a malformed field when no error_key is given (reconcile_node's own
+    # boundary) - correct for most fields, but final_answer isn't
+    # optional the way the others are. Before this fix, a dropped
+    # final_answer left reconcile_node_safe's returned dict without that
+    # key at all, so state's initial None stayed in place all the way to
+    # run_multi_agent_async's unguarded `final_answer.question` access -
+    # an AttributeError, not a graceful degradation. This is the exact
+    # scenario that must now crash *before* this fix and *not* crash
+    # after it.
+    def _fake_reconcile_node(state):
+        return {
+            "reconciliation": ReconciliationResult(
+                counts_match=True, authoritative_source="cohort", discrepancy_flag=False, notes="ok"
+            ),
+            "final_answer": "not a real MultiAgentAnswer",
+        }
+
+    monkeypatch.setattr(orchestrator, "reconcile_node", _fake_reconcile_node)
+
+    clinical_fn = _fn(
+        (_clinical_answer([1, 2], {"Lisinopril": 1, "Amlodipine": 1}), True, _DUMMY_COST_INFO)
+    )
+    cohort_fn = _fn(_cohort_result(2, 1, 1))
+
+    # If the dropped final_answer were ever silently accepted, this call
+    # would fail with an AttributeError (None has no attribute
+    # 'question') rather than a normal assertion failure.
+    result = _run(clinical_fn, cohort_fn)
+
+    assert isinstance(result, MultiAgentAnswer)
+    assert result.mode == "both_failed"
+
+
+def test_valid_final_answer_with_another_malformed_field_does_not_over_escalate(monkeypatch):
+    # Confirms the fix is scoped correctly: a malformed field *other than*
+    # final_answer must still just be dropped by validate_state_update,
+    # exactly as before this fix - not escalated into the reconciliation
+    # fallback unnecessarily, since a perfectly valid final_answer is
+    # still available to return as-is.
+    real_final_answer = MultiAgentAnswer(
+        question="Of patients with hypertension and SBP > 140, how many are on Lisinopril vs. Amlodipine?",
+        answer="2 patients matched.",
+        total_patients=2,
+        drug_a_count=1,
+        drug_b_count=1,
+        confidence="high",
+        mode="reconciled",
+        citations=[],
+        caveat=None,
+        discrepancy_flag=False,
+    )
+
+    def _fake_reconcile_node(state):
+        return {
+            "reconciliation": "not a real ReconciliationResult",
+            "final_answer": real_final_answer,
+        }
+
+    monkeypatch.setattr(orchestrator, "reconcile_node", _fake_reconcile_node)
+
+    clinical_fn = _fn(
+        (_clinical_answer([1, 2], {"Lisinopril": 1, "Amlodipine": 1}), True, _DUMMY_COST_INFO)
+    )
+    cohort_fn = _fn(_cohort_result(2, 1, 1))
+
+    result = _run(clinical_fn, cohort_fn)
+
+    # The real final_answer is returned as-is - not replaced by
+    # _reconcile_error_answer's generic both_failed fallback text/mode.
+    assert result.answer == "2 patients matched."
+    assert result.mode == "reconciled"
+    assert result.total_patients == 2
 
 
 def test_sync_entry_point_delegates_to_the_async_implementation():
