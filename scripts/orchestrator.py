@@ -70,6 +70,23 @@ logger = logging.getLogger(__name__)
 # tool's own internal timeout is the real defense against a hung call.
 _BRANCH_TIMEOUT_SECONDS = 150
 
+# Reconcile-level ceiling (docs/tasks.md "Block 6 - state validation"
+# follow-up): reconcile_node's only slow path is _vocabulary_split_
+# answer's call to get_known_vocabulary(), which on a cache miss runs two
+# sequential GRAPH_QUERY_TIMEOUT=10s Neo4j queries
+# (vocabulary_check.py::_fetch_known_vocabulary) - ~20s worst case.
+# Query(timeout=GRAPH_QUERY_TIMEOUT) only bounds a slow query; if Neo4j
+# itself wedges badly enough to stop enforcing its own timeout, nothing
+# on this side catches it, and reconcile_node would sit outside
+# _BRANCH_TIMEOUT_SECONDS's ceiling entirely - that one only covers the
+# two agent branches, not the reconcile step that runs after them. A
+# generous 3x margin over the ~20s worst case - same "generous multiple
+# of the realistic worst case" spirit as _BRANCH_TIMEOUT_SECONDS above, a
+# bit more headroom here since this path fires far less often (a cache
+# miss on the vocabulary check, not every reconciliation) and
+# reconcile_node has no other slow path than this one.
+_RECONCILE_TIMEOUT_SECONDS = 60
+
 # A dedicated thread pool (docs/plan.md §4), never the shared default pool
 # asyncio.to_thread draws from - so a hung call here can never starve
 # unrelated concurrent asyncio work elsewhere in the process.
@@ -521,9 +538,34 @@ async def run_multi_agent_async(
     def dispatch(state: MultiAgentState) -> dict:
         return {}
 
-    def reconcile_node_safe(state: MultiAgentState) -> dict:
+    async def reconcile_node_safe(state: MultiAgentState) -> dict:
+        # Same submit-to-block6_executor + late-completion-warning +
+        # wait_for pattern _run_branch uses above (docs/tasks.md "Block 6
+        # - state validation" follow-up) - reconcile_node is a synchronous
+        # call (like clinical_agent_fn/cohort_agent_fn), and
+        # Query(timeout=GRAPH_QUERY_TIMEOUT) inside it only bounds a slow
+        # query, not a wedged Neo4j that's stopped enforcing its own
+        # timeout at all. Without this, that failure mode would sit
+        # outside every ceiling this repo has - _BRANCH_TIMEOUT_SECONDS
+        # only covers the two agent branches, not the reconcile step
+        # after them.
+        deadline = time.monotonic() + _RECONCILE_TIMEOUT_SECONDS
+        concurrent_future = block6_executor.submit(reconcile_node, state)
+
+        def _warn_if_completed_after_reconcile_already_timed_out(fut: concurrent.futures.Future) -> None:
+            if time.monotonic() > deadline:
+                logger.warning(
+                    "reconcile timed out after %.0fs; its call actually completed "
+                    "after timeout - discarding the late result",
+                    _RECONCILE_TIMEOUT_SECONDS,
+                )
+
+        concurrent_future.add_done_callback(_warn_if_completed_after_reconcile_already_timed_out)
+
         try:
-            update = reconcile_node(state)
+            update = await asyncio.wait_for(
+                asyncio.wrap_future(concurrent_future), timeout=_RECONCILE_TIMEOUT_SECONDS
+            )
             # State-boundary check, same as clinical_node/cohort_node's
             # validate_state_update call in _run_branch above (docs/tasks.md
             # "Block 6 - state validation"). No error_key/error_kind_key
@@ -554,7 +596,9 @@ async def run_multi_agent_async(
             # Same second line of defense as clinical_node/cohort_node
             # (plan.md §5), extended to reconcile_node itself - this is
             # what actually catches _vocabulary_split_answer's live
-            # get_known_vocabulary() Cypher call failing.
+            # get_known_vocabulary() Cypher call failing, and (per the
+            # wait_for wrapping above) an asyncio.TimeoutError if
+            # reconcile_node itself hangs past _RECONCILE_TIMEOUT_SECONDS.
             try:
                 reconciliation, final_answer = _reconcile_error_answer(state["question"], exc)
             except Exception:
