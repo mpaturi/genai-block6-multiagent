@@ -167,14 +167,30 @@ def _real_driver_or_skip():
 
 def test_a_genuinely_slow_query_surfaces_as_a_timeout_not_a_hang():
     # Verified against actual behavior, not just the diff (same standard
-    # as the retry-backoff work): a real, unbounded 20000x20000-row
-    # UNWIND cross join against a real Neo4j server, timed by hand before
+    # as the retry-backoff work): a real, unbounded 8000x8000-row UNWIND
+    # cross join against a real Neo4j server, timed by hand before
     # writing this assertion - it reliably runs several seconds before
     # completing on its own. With GRAPH_QUERY_TIMEOUT patched down to 1
     # second, _fetch_known_vocabulary's first real session.run() call must
     # surface a real driver-level timeout exception within a small,
     # bounded window instead of ever letting it run to completion.
+    #
+    # pytest.raises(Exception) alone proves nothing - a query that fails
+    # instantly for an unrelated reason (bad Cypher, bad auth) satisfies
+    # it just as well as a real timeout does. Asserting on the specific
+    # exception the driver raises for a server-enforced timeout
+    # (neo4j.exceptions.ClientError with .code ==
+    # "Neo.ClientError.Transaction.TransactionTimedOutClientConfiguration"
+    # - the exact code classify_exception keys off in
+    # scripts/error_classification.py, verified directly against a live
+    # Neo4j 5.18-community server, not assumed) rules that out. An upper
+    # bound alone has the same gap (an instant unrelated failure also
+    # passes "elapsed < 8.0") - the lower bound below (elapsed must be at
+    # least half the mocked timeout) rules out a query that failed before
+    # the timeout ever had a chance to fire.
     import time
+
+    from neo4j.exceptions import ClientError
 
     driver = _real_driver_or_skip()
     try:
@@ -187,17 +203,22 @@ def test_a_genuinely_slow_query_surfaces_as_a_timeout_not_a_hang():
         )
         try:
             started_at = time.monotonic()
-            with pytest.raises(Exception):
+            with pytest.raises(ClientError) as exc_info:
                 vocabulary_check._fetch_known_vocabulary(driver=driver)
             elapsed = time.monotonic() - started_at
         finally:
             vocabulary_check.GRAPH_QUERY_TIMEOUT = original_timeout
             vocabulary_check._DISTINCT_CONDITION_NAMES_QUERY = original_query
 
-        # Generous upper bound (real timeout enforcement isn't
-        # millisecond-precise), but nowhere near what letting the query
-        # actually finish would take - proves this terminates the call,
-        # rather than merely accepting a parameter that's never enforced.
+        assert exc_info.value.code == "Neo.ClientError.Transaction.TransactionTimedOutClientConfiguration"
+        # Lower bound: must have taken at least half the mocked timeout -
+        # a query that failed for an unrelated reason before the timeout
+        # had any chance to fire would complete near-instantly instead.
+        assert elapsed > monkeypatch_timeout * 0.5
+        # Upper bound (real timeout enforcement isn't millisecond-
+        # precise), but nowhere near what letting the query actually
+        # finish would take - proves this terminates the call, rather
+        # than merely accepting a parameter that's never enforced.
         assert elapsed < 8.0
     finally:
         driver.close()

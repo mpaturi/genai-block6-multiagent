@@ -73,12 +73,33 @@ def test_pydantic_validation_error_classifies_as_validation_error():
     assert classify_exception(_make_validation_error()) == "validation_error"
 
 
-def test_client_error_with_transaction_timed_out_code_classifies_as_timeout():
+def test_client_error_with_transaction_timed_out_client_configuration_code_classifies_as_timeout():
     # A real Query(timeout=...) expiring server-side surfaces as this
-    # specific ClientError code, not a ServiceUnavailable - the driver
-    # only raises ServiceUnavailable for transport-level failures, so a
-    # server-enforced query/transaction timeout needs its own check
-    # (a PR #8 review's regression finding).
+    # specific ClientError code - verified directly against a live Neo4j
+    # 5.18-community server (not assumed): the "ClientConfiguration"
+    # suffix specifically denotes a client-requested transaction timeout
+    # (exactly what Query(timeout=...) sets), distinct from a server-
+    # configured transaction timeout (dbms.transaction.timeout), which
+    # surfaces as the bare code without that suffix - see the test below.
+    # Not a ServiceUnavailable - the driver only raises that for
+    # transport-level failures, so a server-enforced query/transaction
+    # timeout needs its own check (a PR #8 review's regression finding;
+    # this specific code correction is a later follow-up finding - the
+    # original PR #8 fix checked the wrong one of the two real codes).
+    exc = _make_client_error(
+        "Neo.ClientError.Transaction.TransactionTimedOutClientConfiguration",
+        "The transaction has been terminated",
+    )
+    assert classify_exception(exc) == "timeout"
+
+
+def test_client_error_with_the_base_transaction_timed_out_code_also_classifies_as_timeout():
+    # The base code (no "ClientConfiguration" suffix) is what a server-
+    # configured transaction timeout (dbms.transaction.timeout) surfaces
+    # as, rather than a client-requested Query(timeout=...) one (see the
+    # test above) - a real, valid Neo4j code in its own right, even though
+    # this codebase's own Query(timeout=...) calls will only ever produce
+    # the ClientConfiguration variant. Both must classify as "timeout".
     exc = _make_client_error(
         "Neo.ClientError.Transaction.TransactionTimedOut",
         "The transaction has been terminated",
