@@ -49,7 +49,17 @@ jobs:
           NEO4J_DATABASE: neo4j
         run: python -m scripts.vocabulary_check
 
+      # NEO4J_PASSWORD set here (unlike a plain `python -m pytest` on a
+      # dev machine with no local Neo4j) is what lets
+      # tests/test_vocabulary_check.py's real-timeout test run for real
+      # against this job's own disposable Neo4j service, instead of
+      # skipping - see that test's own docstring.
       - name: Run tests
+        env:
+          NEO4J_URI: bolt://localhost:7687
+          NEO4J_USER: neo4j
+          NEO4J_PASSWORD: ci_test_password
+          NEO4J_DATABASE: neo4j
         run: python -m pytest
 
       # USE_RAG_FIXTURES replays block5_agent's recorded RAG responses
