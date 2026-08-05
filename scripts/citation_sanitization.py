@@ -47,6 +47,22 @@ _CHAT_DELIMITER_RE = re.compile(
 )
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 
+# Explicit per-citation cap, independent of any upstream chunking
+# guarantee. Measured directly against this repo's own captured RAG
+# fixture data (data/eval/rag_fixtures.json - 102 real citation
+# snippets, from Block 4's actual chunker): min 25, median 144, p90 190,
+# max 200 chars - the 200 ceiling exactly matches Block 4's own
+# chunk_records.py chunking cap. Under normal operation this function
+# never sees more than one already-≤200-char chunk, so joining its
+# matching sentences can't exceed that either - but this function has no
+# way to verify that guarantee still holds for whatever called it, so it
+# enforces its own bound rather than trusting it silently. 500 matches
+# genai-block4-rag-eval's own precedent (QueryRequest.question's
+# max_length=500, chosen the same way: several times its own real
+# observed max of 98 chars) - comfortably above every real value seen
+# here, while still a real, enforced ceiling.
+_MAX_CITATION_SNIPPET_LENGTH = 500
+
 
 def sanitize_citation_text(text: str) -> str:
     """Strip conversation-turn markers and control characters from a
@@ -75,13 +91,17 @@ def trim_citation_snippet(text: str, keywords: list[str]) -> str:
     keep only the sentences that contain at least one of the parsed query
     terms. If no sentence matches, keep the first sentence only, as a safe
     default rather than dropping the citation entirely.
+
+    The result is always capped at _MAX_CITATION_SNIPPET_LENGTH, however
+    it was produced - joining every matching sentence, falling back to
+    the first sentence, or returning the input as-is when it has no
+    sentence-ending punctuation to split on at all.
     """
     sentences = [s for s in _SENTENCE_SPLIT_RE.split(text.strip()) if s]
     if not sentences:
-        return text
+        return text[:_MAX_CITATION_SNIPPET_LENGTH]
 
     lowered_keywords = [k.lower() for k in keywords if k]
     matching = [s for s in sentences if any(k in s.lower() for k in lowered_keywords)]
-    if matching:
-        return " ".join(matching)
-    return sentences[0]
+    result = " ".join(matching) if matching else sentences[0]
+    return result[:_MAX_CITATION_SNIPPET_LENGTH]

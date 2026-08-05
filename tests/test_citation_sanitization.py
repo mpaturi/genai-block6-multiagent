@@ -7,7 +7,11 @@ orchestrator.py's _citations_from_clinical) so the regression proof holds
 even if that call site ever changes - a malicious string fed straight to
 the function must never survive, independent of how it's wired in.
 """
-from scripts.citation_sanitization import sanitize_citation_text, trim_citation_snippet
+from scripts.citation_sanitization import (
+    _MAX_CITATION_SNIPPET_LENGTH,
+    sanitize_citation_text,
+    trim_citation_snippet,
+)
 
 
 # --- sanitize_citation_text ---------------------------------------------
@@ -200,6 +204,37 @@ def test_single_sentence_with_no_terminal_punctuation_is_kept_as_is():
     text = "Patient 1 text"
     result = trim_citation_snippet(text, _KEYWORDS)
     assert result == "Patient 1 text"
+
+
+def test_result_is_truncated_to_the_length_cap_when_every_sentence_matches():
+    # Real per-chunk citation snippets in this corpus (data/eval/
+    # rag_fixtures.json, captured from Block 4's actual chunker) top out
+    # at exactly 200 chars - chunk_records.py's own chunking cap - with a
+    # median of 144 (measured directly: min 25, median 144, p90 190, max
+    # 200 across 102 real snippets). Under normal operation, joining
+    # matching sentences can never exceed the length of the single chunk
+    # they came from, so this cap is defense-in-depth against an input
+    # that doesn't carry that upstream guarantee - a citation source
+    # this function has no way to verify chunking assumptions about.
+    # Every sentence contains a keyword here, so without an explicit cap
+    # the joined result would just be the full (oversized) input back.
+    sentence = "Patient has hypertension and more hypertension details here. "
+    text = sentence * 20  # comfortably over any reasonable per-citation cap
+    result = trim_citation_snippet(text, _KEYWORDS)
+    assert len(result) == _MAX_CITATION_SNIPPET_LENGTH
+    assert result == text[:_MAX_CITATION_SNIPPET_LENGTH]
+
+
+def test_result_is_truncated_to_the_length_cap_with_no_terminal_punctuation():
+    # No period/!/? anywhere, so _SENTENCE_SPLIT_RE never splits this at
+    # all - the whole string is treated as one "sentence" and returned
+    # via the sentences[0] fallback path since it contains no keyword
+    # either. Must still be capped, the same as the matched-sentences
+    # path above.
+    text = "no terminal punctuation here just a very long run-on note " * 20
+    result = trim_citation_snippet(text, ["not-a-real-keyword"])
+    assert len(result) == _MAX_CITATION_SNIPPET_LENGTH
+    assert result == text[:_MAX_CITATION_SNIPPET_LENGTH]
 
 
 # --- sanitize_citation_text + trim_citation_snippet, combined -----------
