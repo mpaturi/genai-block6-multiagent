@@ -1,4 +1,4 @@
-block5_agent @ git+https://github.com/mpaturi/genai-block5-agent.git@main
+block5_agent @ git+https://github.com/mpaturi/genai-block5-agent.git@585fcc9d86df2d7f4dc70ceffdb45354a9954d78
 langgraph==1.2.9
 langsmith==0.10.6
 anthropic==0.116.0
