@@ -19,6 +19,7 @@ from block5_agent.agent import run_agent
 from block5_agent.schemas import ClinicalAnswer, QuestionInput, assemble_question_text
 from langgraph.graph import END, StateGraph
 
+from scripts.citation_sanitization import sanitize_citation_text, trim_citation_snippet
 from scripts.cohort_agent import run_cohort_agent
 from scripts.error_classification import classify_exception
 from scripts.run_log import log_multiagent_run
@@ -166,11 +167,38 @@ def _cohort_branch_failed(state: MultiAgentState) -> bool:
     return cohort_result is not None and cohort_result.outcome == "tool_error"
 
 
-def _citations_from_clinical(clinical_result: ClinicalAnswer) -> list[Citation]:
-    return [
-        Citation(patient_id=entry["patient_id"], snippet=entry["snippet"], source="clinical")
-        for entry in clinical_result.rag_citations
-    ]
+def _citations_from_clinical(clinical_result: ClinicalAnswer, question: QuestionInput) -> list[Citation]:
+    """Builds this repo's Citation objects from Role 1's rag_citations - the
+    one place citation snippets are constructed, so it's also the one place
+    the hardening below runs (docs/tasks.md "Block 6 - citation hardening").
+
+    Sanitized (control sequences / instruction-like patterns stripped,
+    LLM01 indirect-injection defense-in-depth - see
+    scripts/citation_sanitization.py) and trimmed to sentences containing
+    one of the question's own terms (LLM02 field-layer minimization),
+    since Block 4's own ingestion-time sanitizer (PR #13) is not yet
+    merged and citations otherwise arrive here as raw chunk_text.
+    """
+    keywords = [question.condition, question.lab, question.drug_a, question.drug_b]
+    citations = []
+    for entry in clinical_result.rag_citations:
+        snippet = sanitize_citation_text(entry["snippet"])
+        snippet = trim_citation_snippet(snippet, keywords)
+        citations.append(Citation(patient_id=entry["patient_id"], snippet=snippet, source="clinical"))
+    return citations
+
+
+def _sanitized_or_none(text: str | None) -> str | None:
+    """sanitize_citation_text (structural stripping only - no
+    trim_citation_snippet, since answer/caveat aren't citation excerpts
+    to keyword-trim) for clinical_result.answer/.caveat wherever they
+    flow into MultiAgentAnswer. Block 5's own answer-writing LLM call and
+    its caveat text are both free text this repo doesn't control the
+    content of - the same indirect-injection surface citations have.
+    caveat is Optional; answer never is, but this helper handles both
+    uniformly so every call site looks the same.
+    """
+    return sanitize_citation_text(text) if text is not None else None
 
 
 def _both_failed_answer(question: QuestionInput) -> tuple[ReconciliationResult, MultiAgentAnswer]:
@@ -214,7 +242,7 @@ def _cohort_only_degraded_answer(
     # an LLM call here would reintroduce the exact nondeterminism/cost
     # Role 1's own failure was supposed to remove, and Role 1's LLM is
     # precisely what just failed in this mode.
-    answer_text = (
+    answer_text = sanitize_citation_text(
         f"Of {cohort_result.total_patients_matched} patients with {question.condition} "
         f"and {question.lab} {question.comparison} {question.value}, "
         f"{cohort_result.drug_a_count} are on {question.drug_a} and "
@@ -254,14 +282,14 @@ def _clinical_only_degraded_answer(
     )
     final_answer = MultiAgentAnswer(
         question=clinical_result.question,
-        answer=clinical_result.answer,
+        answer=sanitize_citation_text(clinical_result.answer),
         total_patients=patients_checked,
         drug_a_count=clinical_result.graph_result.get(question.drug_a, 0),
         drug_b_count=clinical_result.graph_result.get(question.drug_b, 0),
         confidence=confidence,
         mode="clinical_only_degraded",
-        citations=_citations_from_clinical(clinical_result),
-        caveat=clinical_result.caveat,
+        citations=_citations_from_clinical(clinical_result, question),
+        caveat=_sanitized_or_none(clinical_result.caveat),
         discrepancy_flag=False,
     )
     return reconciliation, final_answer
@@ -366,7 +394,8 @@ def _both_answered_reconciled_answer(
 ) -> tuple[ReconciliationResult, MultiAgentAnswer]:
     clinical_drug_a_count = clinical_result.graph_result.get(question.drug_a, 0)
     clinical_drug_b_count = clinical_result.graph_result.get(question.drug_b, 0)
-    citations = _citations_from_clinical(clinical_result)
+    citations = _citations_from_clinical(clinical_result, question)
+    sanitized_answer = sanitize_citation_text(clinical_result.answer)
 
     if cohort_result.total_patients_matched > _ROLE1_TOP_K_CEILING:
         # Role 1's count is known-incomplete by definition once the true
@@ -389,7 +418,7 @@ def _both_answered_reconciled_answer(
         )
         final_answer = MultiAgentAnswer(
             question=clinical_result.question,
-            answer=clinical_result.answer,
+            answer=sanitized_answer,
             total_patients=cohort_result.total_patients_matched,
             drug_a_count=cohort_result.drug_a_count,
             drug_b_count=cohort_result.drug_b_count,
@@ -414,7 +443,7 @@ def _both_answered_reconciled_answer(
         )
         final_answer = MultiAgentAnswer(
             question=clinical_result.question,
-            answer=clinical_result.answer,
+            answer=sanitized_answer,
             total_patients=cohort_result.total_patients_matched,
             drug_a_count=cohort_result.drug_a_count,
             drug_b_count=cohort_result.drug_b_count,
@@ -442,7 +471,7 @@ def _both_answered_reconciled_answer(
     )
     final_answer = MultiAgentAnswer(
         question=clinical_result.question,
-        answer=clinical_result.answer,
+        answer=sanitized_answer,
         total_patients=cohort_result.total_patients_matched,
         drug_a_count=cohort_result.drug_a_count,
         drug_b_count=cohort_result.drug_b_count,

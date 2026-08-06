@@ -158,6 +158,11 @@ data/eval/run_log.jsonl
 # .gitignore entry for the same path.
 data/logs/
 
+# Disposable git worktree tests/_live_e2e_support.py creates/removes
+# around each live run of tests/test_citation_hardening_e2e.py - never
+# meant to persist or be committed.
+.e2e_block4_main_worktree/
+
 # Environments
 .env
 .envrc
