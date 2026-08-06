@@ -19,6 +19,7 @@ from block5_agent.agent import run_agent
 from block5_agent.schemas import ClinicalAnswer, QuestionInput, assemble_question_text
 from langgraph.graph import END, StateGraph
 
+from scripts.citation_sanitization import sanitize_citation_text, trim_citation_snippet
 from scripts.cohort_agent import run_cohort_agent
 from scripts.error_classification import classify_exception
 from scripts.run_log import log_multiagent_run
@@ -29,12 +30,38 @@ from scripts.schemas import (
     MultiAgentState,
     ReconciliationResult,
 )
+from scripts.state_validation import validate_state_update
 from scripts.vocabulary_check import get_known_vocabulary
 
 # clinical_cost_info's shape when Role 1 never successfully returned
 # (cohort_only_degraded, both_failed, an out-of-contract exception) -
 # nothing to log a real cost for on those paths (docs/plan.md §9).
 _ZERO_COST_INFO = {"cost_usd": 0.0, "input_tokens": 0, "output_tokens": 0}
+
+# Last-resort fallback for reconcile_node_safe (docs/tasks.md "Block 6 -
+# state validation"): used only if _reconcile_error_answer itself raises
+# while handling an earlier exception - no computed fields (it can't
+# trust question/exc details it may not have been able to read either),
+# just enough for run_multi_agent to still return a valid MultiAgentAnswer
+# instead of letting the exception escape.
+_RECONCILE_HELPER_FAILURE_RECONCILIATION = ReconciliationResult(
+    counts_match=False,
+    authoritative_source="neither",
+    discrepancy_flag=False,
+    notes="Reconciliation failed, and the fallback error handler itself failed.",
+)
+_RECONCILE_HELPER_FAILURE_ANSWER = MultiAgentAnswer(
+    question="<unknown>",
+    answer="The orchestrator encountered an internal error and could not produce an answer.",
+    total_patients=0,
+    drug_a_count=0,
+    drug_b_count=0,
+    confidence="low",
+    mode="both_failed",
+    citations=[],
+    caveat=None,
+    discrepancy_flag=False,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +70,23 @@ logger = logging.getLogger(__name__)
 # before either tool's own internal timeout even starts its clock; each
 # tool's own internal timeout is the real defense against a hung call.
 _BRANCH_TIMEOUT_SECONDS = 150
+
+# Reconcile-level ceiling (docs/tasks.md "Block 6 - state validation"
+# follow-up): reconcile_node's only slow path is _vocabulary_split_
+# answer's call to get_known_vocabulary(), which on a cache miss runs two
+# sequential GRAPH_QUERY_TIMEOUT=10s Neo4j queries
+# (vocabulary_check.py::_fetch_known_vocabulary) - ~20s worst case.
+# Query(timeout=GRAPH_QUERY_TIMEOUT) only bounds a slow query; if Neo4j
+# itself wedges badly enough to stop enforcing its own timeout, nothing
+# on this side catches it, and reconcile_node would sit outside
+# _BRANCH_TIMEOUT_SECONDS's ceiling entirely - that one only covers the
+# two agent branches, not the reconcile step that runs after them. A
+# generous 3x margin over the ~20s worst case - same "generous multiple
+# of the realistic worst case" spirit as _BRANCH_TIMEOUT_SECONDS above, a
+# bit more headroom here since this path fires far less often (a cache
+# miss on the vocabulary check, not every reconciliation) and
+# reconcile_node has no other slow path than this one.
+_RECONCILE_TIMEOUT_SECONDS = 60
 
 # A dedicated thread pool (docs/plan.md §4), never the shared default pool
 # asyncio.to_thread draws from - so a hung call here can never starve
@@ -86,7 +130,16 @@ async def _run_branch(branch_name: str, call_fn, on_success, error_keys: tuple[s
         raw_result = await asyncio.wait_for(
             asyncio.wrap_future(concurrent_future), timeout=_BRANCH_TIMEOUT_SECONDS
         )
-        return on_success(raw_result)
+        update = on_success(raw_result)
+        # State-boundary check (docs/tasks.md "Block 6 - state
+        # validation"): call_fn is trusted to never raise on its own
+        # documented failure modes, but not to have written well-typed
+        # state - a compromised or simply buggy agent function could
+        # still hand on_success something reconcile_node would otherwise
+        # trust unvalidated. A violation here is marked suspect and
+        # routed into the exact same degraded-mode bucket a real
+        # exception already takes, just below.
+        return validate_state_update(branch_name, update, error_key=error_key, error_kind_key=error_kind_key)
     except Exception as exc:
         # Second line of defense (docs/plan.md §5): run_agent/
         # run_cohort_agent are trusted to never raise on their own
@@ -114,11 +167,38 @@ def _cohort_branch_failed(state: MultiAgentState) -> bool:
     return cohort_result is not None and cohort_result.outcome == "tool_error"
 
 
-def _citations_from_clinical(clinical_result: ClinicalAnswer) -> list[Citation]:
-    return [
-        Citation(patient_id=entry["patient_id"], snippet=entry["snippet"], source="clinical")
-        for entry in clinical_result.rag_citations
-    ]
+def _citations_from_clinical(clinical_result: ClinicalAnswer, question: QuestionInput) -> list[Citation]:
+    """Builds this repo's Citation objects from Role 1's rag_citations - the
+    one place citation snippets are constructed, so it's also the one place
+    the hardening below runs (docs/tasks.md "Block 6 - citation hardening").
+
+    Sanitized (control sequences / instruction-like patterns stripped,
+    LLM01 indirect-injection defense-in-depth - see
+    scripts/citation_sanitization.py) and trimmed to sentences containing
+    one of the question's own terms (LLM02 field-layer minimization),
+    since Block 4's own ingestion-time sanitizer (PR #13) is not yet
+    merged and citations otherwise arrive here as raw chunk_text.
+    """
+    keywords = [question.condition, question.lab, question.drug_a, question.drug_b]
+    citations = []
+    for entry in clinical_result.rag_citations:
+        snippet = sanitize_citation_text(entry["snippet"])
+        snippet = trim_citation_snippet(snippet, keywords)
+        citations.append(Citation(patient_id=entry["patient_id"], snippet=snippet, source="clinical"))
+    return citations
+
+
+def _sanitized_or_none(text: str | None) -> str | None:
+    """sanitize_citation_text (structural stripping only - no
+    trim_citation_snippet, since answer/caveat aren't citation excerpts
+    to keyword-trim) for clinical_result.answer/.caveat wherever they
+    flow into MultiAgentAnswer. Block 5's own answer-writing LLM call and
+    its caveat text are both free text this repo doesn't control the
+    content of - the same indirect-injection surface citations have.
+    caveat is Optional; answer never is, but this helper handles both
+    uniformly so every call site looks the same.
+    """
+    return sanitize_citation_text(text) if text is not None else None
 
 
 def _both_failed_answer(question: QuestionInput) -> tuple[ReconciliationResult, MultiAgentAnswer]:
@@ -162,7 +242,7 @@ def _cohort_only_degraded_answer(
     # an LLM call here would reintroduce the exact nondeterminism/cost
     # Role 1's own failure was supposed to remove, and Role 1's LLM is
     # precisely what just failed in this mode.
-    answer_text = (
+    answer_text = sanitize_citation_text(
         f"Of {cohort_result.total_patients_matched} patients with {question.condition} "
         f"and {question.lab} {question.comparison} {question.value}, "
         f"{cohort_result.drug_a_count} are on {question.drug_a} and "
@@ -202,14 +282,14 @@ def _clinical_only_degraded_answer(
     )
     final_answer = MultiAgentAnswer(
         question=clinical_result.question,
-        answer=clinical_result.answer,
+        answer=sanitize_citation_text(clinical_result.answer),
         total_patients=patients_checked,
         drug_a_count=clinical_result.graph_result.get(question.drug_a, 0),
         drug_b_count=clinical_result.graph_result.get(question.drug_b, 0),
         confidence=confidence,
         mode="clinical_only_degraded",
-        citations=_citations_from_clinical(clinical_result),
-        caveat=clinical_result.caveat,
+        citations=_citations_from_clinical(clinical_result, question),
+        caveat=_sanitized_or_none(clinical_result.caveat),
         discrepancy_flag=False,
     )
     return reconciliation, final_answer
@@ -314,7 +394,8 @@ def _both_answered_reconciled_answer(
 ) -> tuple[ReconciliationResult, MultiAgentAnswer]:
     clinical_drug_a_count = clinical_result.graph_result.get(question.drug_a, 0)
     clinical_drug_b_count = clinical_result.graph_result.get(question.drug_b, 0)
-    citations = _citations_from_clinical(clinical_result)
+    citations = _citations_from_clinical(clinical_result, question)
+    sanitized_answer = sanitize_citation_text(clinical_result.answer)
 
     if cohort_result.total_patients_matched > _ROLE1_TOP_K_CEILING:
         # Role 1's count is known-incomplete by definition once the true
@@ -337,7 +418,7 @@ def _both_answered_reconciled_answer(
         )
         final_answer = MultiAgentAnswer(
             question=clinical_result.question,
-            answer=clinical_result.answer,
+            answer=sanitized_answer,
             total_patients=cohort_result.total_patients_matched,
             drug_a_count=cohort_result.drug_a_count,
             drug_b_count=cohort_result.drug_b_count,
@@ -362,7 +443,7 @@ def _both_answered_reconciled_answer(
         )
         final_answer = MultiAgentAnswer(
             question=clinical_result.question,
-            answer=clinical_result.answer,
+            answer=sanitized_answer,
             total_patients=cohort_result.total_patients_matched,
             drug_a_count=cohort_result.drug_a_count,
             drug_b_count=cohort_result.drug_b_count,
@@ -390,7 +471,7 @@ def _both_answered_reconciled_answer(
     )
     final_answer = MultiAgentAnswer(
         question=clinical_result.question,
-        answer=clinical_result.answer,
+        answer=sanitized_answer,
         total_patients=cohort_result.total_patients_matched,
         drug_a_count=cohort_result.drug_a_count,
         drug_b_count=cohort_result.drug_b_count,
@@ -486,15 +567,79 @@ async def run_multi_agent_async(
     def dispatch(state: MultiAgentState) -> dict:
         return {}
 
-    def reconcile_node_safe(state: MultiAgentState) -> dict:
+    async def reconcile_node_safe(state: MultiAgentState) -> dict:
+        # Same submit-to-block6_executor + late-completion-warning +
+        # wait_for pattern _run_branch uses above (docs/tasks.md "Block 6
+        # - state validation" follow-up) - reconcile_node is a synchronous
+        # call (like clinical_agent_fn/cohort_agent_fn), and
+        # Query(timeout=GRAPH_QUERY_TIMEOUT) inside it only bounds a slow
+        # query, not a wedged Neo4j that's stopped enforcing its own
+        # timeout at all. Without this, that failure mode would sit
+        # outside every ceiling this repo has - _BRANCH_TIMEOUT_SECONDS
+        # only covers the two agent branches, not the reconcile step
+        # after them.
+        deadline = time.monotonic() + _RECONCILE_TIMEOUT_SECONDS
+        concurrent_future = block6_executor.submit(reconcile_node, state)
+
+        def _warn_if_completed_after_reconcile_already_timed_out(fut: concurrent.futures.Future) -> None:
+            if time.monotonic() > deadline:
+                logger.warning(
+                    "reconcile timed out after %.0fs; its call actually completed "
+                    "after timeout - discarding the late result",
+                    _RECONCILE_TIMEOUT_SECONDS,
+                )
+
+        concurrent_future.add_done_callback(_warn_if_completed_after_reconcile_already_timed_out)
+
         try:
-            return reconcile_node(state)
+            update = await asyncio.wait_for(
+                asyncio.wrap_future(concurrent_future), timeout=_RECONCILE_TIMEOUT_SECONDS
+            )
+            # State-boundary check, same as clinical_node/cohort_node's
+            # validate_state_update call in _run_branch above (docs/tasks.md
+            # "Block 6 - state validation"). No error_key/error_kind_key
+            # here: reconcile_node's own well-typed pydantic construction
+            # already guards against a bad *type* (a mismatch would have
+            # raised before this line, caught below) - this only catches an
+            # unexpected key/shape, so a stray field is dropped and logged
+            # rather than blocking the rest of an otherwise-valid update.
+            validated = validate_state_update("reconcile_node", update)
+            if validated.get("final_answer") is None:
+                # A validation violation on final_answer gets silently
+                # dropped by validate_state_update above (no error_key
+                # means "drop the bad field, keep the rest") - but
+                # final_answer isn't optional the way the other fields
+                # are: state's initial value is already None, so letting
+                # this drop stand would leave that None in place all the
+                # way to run_multi_agent_async's unguarded
+                # `final_answer.question` access below, defeating the
+                # exact "never raises" contract this phase exists to
+                # guarantee. Escalate through the same fallback exceptions
+                # already use, rather than a second fallback path.
+                raise ValueError(
+                    "reconcile_node's final_answer failed state validation "
+                    "and was dropped - no valid answer to return"
+                )
+            return validated
         except Exception as exc:
             # Same second line of defense as clinical_node/cohort_node
             # (plan.md §5), extended to reconcile_node itself - this is
             # what actually catches _vocabulary_split_answer's live
-            # get_known_vocabulary() Cypher call failing.
-            reconciliation, final_answer = _reconcile_error_answer(state["question"], exc)
+            # get_known_vocabulary() Cypher call failing, and (per the
+            # wait_for wrapping above) an asyncio.TimeoutError if
+            # reconcile_node itself hangs past _RECONCILE_TIMEOUT_SECONDS.
+            try:
+                reconciliation, final_answer = _reconcile_error_answer(state["question"], exc)
+            except Exception:
+                # _reconcile_error_answer is itself trusted to never raise
+                # under normal conditions, but isn't proven to be immune -
+                # if it does, this is the actual last line of defense
+                # standing between it and run_multi_agent's caller.
+                logger.error(
+                    "reconcile_node_safe's own error handler failed while handling %r", exc, exc_info=True
+                )
+                reconciliation = _RECONCILE_HELPER_FAILURE_RECONCILIATION
+                final_answer = _RECONCILE_HELPER_FAILURE_ANSWER
             return {"reconciliation": reconciliation, "final_answer": final_answer}
 
     # Built fresh per call (mirroring Block 5's run_agent) so each

@@ -21,11 +21,23 @@ from pydantic import ValidationError
 # actually a timeout", not a plain connection refusal.
 _TIMEOUT_MESSAGE_KEYWORDS = ["timed out", "timeout"]
 
-# The one ClientError code this classifier treats as a timeout - a real
-# Query(timeout=...) expiring server-side surfaces as this specific code,
-# not a ServiceUnavailable (the driver only raises ServiceUnavailable for
+# The ClientError codes this classifier treats as a timeout - not a
+# ServiceUnavailable (the driver only raises ServiceUnavailable for
 # transport-level failures) - a PR #8 review's regression finding.
-_CLIENT_ERROR_TIMEOUT_CODE = "Neo.ClientError.Transaction.TransactionTimedOut"
+# Verified directly against a live Neo4j 5.18-community server (not
+# assumed): a real Query(timeout=...) expiring server-side surfaces as
+# the "ClientConfiguration" variant specifically - that suffix denotes a
+# client-requested transaction timeout, distinct from the bare code,
+# which is what a server-configured transaction timeout
+# (dbms.transaction.timeout) surfaces as instead. Both recognized here
+# since both are real, valid Neo4j timeout codes, even though this
+# codebase's own Query(timeout=...) calls will only ever produce the
+# ClientConfiguration variant (a later follow-up finding - PR #8's
+# original fix checked only the wrong one of the two real codes).
+_CLIENT_ERROR_TIMEOUT_CODES = {
+    "Neo.ClientError.Transaction.TransactionTimedOut",
+    "Neo.ClientError.Transaction.TransactionTimedOutClientConfiguration",
+}
 
 
 def classify_exception(exc: Exception) -> str:
@@ -44,10 +56,10 @@ def classify_exception(exc: Exception) -> str:
             return "timeout"
         return "connection_error"
 
-    # A real Query(timeout=...) expiring raises this specific ClientError
-    # code - not every ClientError is a timeout (a syntax error is a real
-    # bug, not worth retrying), so only this one code counts.
-    if isinstance(exc, ClientError) and exc.code == _CLIENT_ERROR_TIMEOUT_CODE:
+    # A real Query(timeout=...) expiring raises one of these specific
+    # ClientError codes - not every ClientError is a timeout (a syntax
+    # error is a real bug, not worth retrying), so only these count.
+    if isinstance(exc, ClientError) and exc.code in _CLIENT_ERROR_TIMEOUT_CODES:
         return "timeout"
 
     # A transient database condition (leader switch, deadlock, momentarily

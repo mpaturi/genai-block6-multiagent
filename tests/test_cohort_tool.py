@@ -215,13 +215,19 @@ def test_query_full_cohort_wraps_an_unknown_exception_as_non_retryable():
 def test_query_full_cohort_wraps_a_real_transaction_timeout_as_retryable():
     # Regression test for a PR #8 review's finding: a real Query(timeout=...)
     # expiring server-side raises a real neo4j ClientError carrying the
-    # Neo.ClientError.Transaction.TransactionTimedOut code - not a
-    # ServiceUnavailable, and not one of the generic ConnectionError/
-    # RuntimeError fakes the tests above already cover. Before
-    # classify_exception recognized this code, this exact scenario fell
-    # through to "unknown" and was wrongly marked non-retryable.
+    # Neo.ClientError.Transaction.TransactionTimedOutClientConfiguration
+    # code - not a ServiceUnavailable, and not one of the generic
+    # ConnectionError/RuntimeError fakes the tests above already cover.
+    # Before classify_exception recognized this code, this exact scenario
+    # fell through to "unknown" and was wrongly marked non-retryable. The
+    # "ClientConfiguration" suffix is what a real Query(timeout=...)
+    # expiration actually produces (verified directly against a live
+    # Neo4j 5.18-community server, a later follow-up finding - the
+    # original PR #8 fix checked the wrong one of the two real codes) -
+    # see scripts/error_classification.py's own two-code test for the
+    # base-code (server-configured timeout) case.
     timeout_exc = Neo4jError._hydrate_neo4j(
-        code="Neo.ClientError.Transaction.TransactionTimedOut",
+        code="Neo.ClientError.Transaction.TransactionTimedOutClientConfiguration",
         message="The transaction has been terminated",
     )
     driver = _FakeDriver(raise_exc=timeout_exc)
