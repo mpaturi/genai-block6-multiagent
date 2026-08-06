@@ -32,6 +32,7 @@ Security constraints under test (spec.md §2):
 - Read-only: MATCH/RETURN only, no CREATE/MERGE/DELETE/SET.
 """
 import inspect
+import logging
 import re
 
 import pytest
@@ -135,15 +136,20 @@ class _FakeResult:
 
 
 class _FakeSession:
-    def __init__(self, raise_exc=None, single_value=None, rows=None, recorded_queries=None):
+    def __init__(
+        self, raise_exc=None, single_value=None, rows=None, recorded_queries=None, recorded_params=None
+    ):
         self._raise_exc = raise_exc
         self._single_value = single_value
         self._rows = rows
         self._recorded_queries = recorded_queries
+        self._recorded_params = recorded_params
 
     def run(self, query, **params):
         if self._recorded_queries is not None:
             self._recorded_queries.append(query)
+        if self._recorded_params is not None:
+            self._recorded_params.append(params)
         if self._raise_exc is not None:
             raise self._raise_exc
         return _FakeResult(single_value=self._single_value, rows=self._rows)
@@ -163,6 +169,11 @@ class _FakeDriver:
         # Populated with each Query object session.run() was called with,
         # so tests can inspect e.g. .timeout without a live driver.
         self.recorded_queries = []
+        # Populated with each session.run() call's **params dict (the
+        # actual Cypher $parameter bindings) - separate from
+        # recorded_queries so a test can assert on query *structure* and
+        # parameter *values* independently.
+        self.recorded_params = []
 
     def session(self, database=None):
         return _FakeSession(
@@ -170,6 +181,7 @@ class _FakeDriver:
             single_value=self._single_value,
             rows=self._rows,
             recorded_queries=self.recorded_queries,
+            recorded_params=self.recorded_params,
         )
 
 
@@ -249,6 +261,86 @@ def test_count_drugs_exhaustive_wraps_an_unknown_exception_as_non_retryable():
         assert exc.retryable is False
 
 
+# --- dynamic injection test (docs/tasks.md "Cohort agent injection test
+# and query-size visibility") ------------------------------------------
+#
+# The tests above are static: they inspect the fixed query-text constants
+# and this module's source, proving condition/value are never written as
+# f-string/.format() placeholders anywhere in the code today. This test is
+# the dynamic counterpart Block 5's own test suite doesn't have either
+# (genai-block5-agent/tests/test_graph_tool.py has no equivalent): it
+# actually calls query_full_cohort with an adversarial condition value and
+# inspects what really reached the driver - the query *text* the fake
+# received (must be byte-identical to the fixed template, completely
+# unaffected by the malicious input) and the *parameter dict* the fake
+# received (where the malicious value must land, since binding it as a
+# Cypher $parameter - not string formatting - is what makes it inert).
+
+
+def test_adversarial_condition_value_is_bound_as_a_parameter_never_interpolated():
+    # A value that would break out of the query text's string literal and
+    # inject a second write clause, if it were ever concatenated/formatted
+    # into the Cypher instead of bound as a $parameter.
+    malicious_condition = "Essential hypertension'}) DETACH DELETE (p) //"
+    driver = _FakeDriver(single_value={"matched_ids": []})
+
+    query_full_cohort(malicious_condition, "SBP", "above", 140, driver=driver)
+
+    sent_query = driver.recorded_queries[0]
+    expected_query_text = FULL_COHORT_QUERY_TEMPLATE.format(lab_property="latest_sbp", op=">")
+    # The query text sent to the driver is exactly the fixed template,
+    # byte-for-byte - the malicious value never touched it.
+    assert sent_query.text == expected_query_text
+    assert "DETACH DELETE" not in sent_query.text
+    assert "//" not in sent_query.text
+
+    # The malicious string reaches the driver only as a bound parameter
+    # value, unmodified - the one place it's allowed to be, since the
+    # driver (not Python string formatting) is responsible for treating
+    # it as inert data rather than executable Cypher.
+    assert driver.recorded_params[0]["condition"] == malicious_condition
+    assert driver.recorded_params[0]["value"] == 140
+
+
+def test_adversarial_condition_value_never_makes_the_query_writable():
+    # Same adversarial input, checked against the read-only invariant
+    # itself: even with a hostile condition value, the query the driver
+    # actually executes must still contain no write keyword.
+    malicious_condition = "x'}) SET p.person_id = 0 //"
+    driver = _FakeDriver(single_value={"matched_ids": []})
+
+    query_full_cohort(malicious_condition, "SBP", "above", 140, driver=driver)
+
+    _assert_read_only(driver.recorded_queries[0].text)
+
+
+class _ExplodingDriver:
+    """Proves the whitelist gate runs before any driver interaction —
+    session() raising means the rejection didn't happen early enough."""
+    def session(self, *args, **kwargs):
+        raise AssertionError("session() must never be called for a lab/comparison the whitelist rejects")
+
+
+def test_adversarial_lab_is_rejected_before_reaching_the_driver():
+    malicious_lab = "SBP AND (p) DETACH DELETE (p) //"
+
+    with pytest.raises(CohortServiceError) as exc_info:
+        query_full_cohort("Essential hypertension", malicious_lab, "above", 140, driver=_ExplodingDriver())
+
+    assert exc_info.value.detail == "invalid_lab_or_comparison"
+    assert exc_info.value.retryable is False
+
+
+def test_adversarial_comparison_is_rejected_before_reaching_the_driver():
+    malicious_comparison = "above'}) SET p.person_id = 0 //"
+
+    with pytest.raises(CohortServiceError) as exc_info:
+        query_full_cohort("Essential hypertension", "SBP", malicious_comparison, 140, driver=_ExplodingDriver())
+
+    assert exc_info.value.detail == "invalid_lab_or_comparison"
+    assert exc_info.value.retryable is False
+
+
 # --- injectable GRAPH_QUERY_TIMEOUT (Phase 8 hardening) ---------------------
 
 
@@ -312,3 +404,130 @@ def test_count_drugs_exhaustive_wraps_a_get_driver_failure_as_cohort_service_err
 
     with pytest.raises(CohortServiceError):
         count_drugs_exhaustive([1, 2, 3], "Lisinopril", "Amlodipine")
+
+
+# --- query-size/runtime visibility logging (docs/tasks.md "Cohort agent
+# injection test and query-size visibility", spec.md LLM10) -------------
+#
+# Flagging only, never enforcing: a hard cap would reintroduce the
+# undercounting problem the Cohort agent exists to solve (spec.md LLM10's
+# own "Target" decision), so every case below must still return the real
+# result even when a soft-alert condition fires.
+
+
+def test_query_full_cohort_logs_row_count_and_runtime(caplog):
+    driver = _FakeDriver(single_value={"matched_ids": [1, 2, 3]})
+
+    with caplog.at_level(logging.INFO, logger="scripts.cohort_tool"):
+        query_full_cohort("Essential hypertension", "SBP", "above", 140, driver=driver)
+
+    info_records = [r for r in caplog.records if r.levelno == logging.INFO]
+    assert any("query_full_cohort" in r.message and "3" in r.message for r in info_records)
+
+
+def test_count_drugs_exhaustive_logs_row_count_and_runtime(caplog):
+    driver = _FakeDriver(rows=[{"drug": "Lisinopril", "patient_count": 2}])
+
+    with caplog.at_level(logging.INFO, logger="scripts.cohort_tool"):
+        count_drugs_exhaustive([1, 2], "Lisinopril", "Amlodipine", driver=driver)
+
+    info_records = [r for r in caplog.records if r.levelno == logging.INFO]
+    assert any("count_drugs_exhaustive" in r.message and "2" in r.message for r in info_records)
+
+
+def test_query_full_cohort_logs_even_when_the_query_raises(caplog):
+    # The soft-alert logging exists specifically to flag slow/large
+    # queries - the one case it matters most is a query that never came
+    # back at all. Before this fix, the logging call sat as the last line
+    # inside the `with driver.session(...)` block, only reached after a
+    # successful run - a raised exception (a real timeout, among other
+    # things) jumped straight to `except`, and this never ran.
+    driver = _FakeDriver(raise_exc=RuntimeError("timeout"))
+
+    with caplog.at_level(logging.INFO, logger="scripts.cohort_tool"):
+        with pytest.raises(CohortServiceError):
+            query_full_cohort("Essential hypertension", "SBP", "above", 140, driver=driver)
+
+    assert caplog.records
+    assert any(
+        "query_full_cohort" in r.message and "did not complete" in r.message for r in caplog.records
+    )
+
+
+def test_count_drugs_exhaustive_logs_even_when_the_query_raises(caplog):
+    driver = _FakeDriver(raise_exc=RuntimeError("timeout"))
+
+    with caplog.at_level(logging.INFO, logger="scripts.cohort_tool"):
+        with pytest.raises(CohortServiceError):
+            count_drugs_exhaustive([1, 2], "Lisinopril", "Amlodipine", driver=driver)
+
+    assert caplog.records
+    assert any(
+        "count_drugs_exhaustive" in r.message and "did not complete" in r.message for r in caplog.records
+    )
+
+
+def test_query_full_cohort_warns_when_result_exceeds_the_soft_alert_patient_threshold(caplog):
+    large_result = list(range(1, cohort_tool._soft_alert_patient_threshold() + 2))
+    driver = _FakeDriver(single_value={"matched_ids": large_result})
+
+    with caplog.at_level(logging.WARNING, logger="scripts.cohort_tool"):
+        result = query_full_cohort("Essential hypertension", "SBP", "above", 140, driver=driver)
+
+    # Flagged, not blocked - the real, full result is still returned.
+    assert result["patient_ids"] == large_result
+    assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+
+def test_query_full_cohort_does_not_warn_under_the_soft_alert_threshold(caplog):
+    driver = _FakeDriver(single_value={"matched_ids": [1, 2, 3]})
+
+    with caplog.at_level(logging.WARNING, logger="scripts.cohort_tool"):
+        query_full_cohort("Essential hypertension", "SBP", "above", 140, driver=driver)
+
+    assert not any(r.levelno == logging.WARNING for r in caplog.records)
+
+
+def test_count_drugs_exhaustive_warns_when_cohort_size_exceeds_the_soft_alert_threshold(caplog):
+    large_cohort = list(range(1, cohort_tool._soft_alert_patient_threshold() + 2))
+    driver = _FakeDriver(rows=[{"drug": "Lisinopril", "patient_count": len(large_cohort)}])
+
+    with caplog.at_level(logging.WARNING, logger="scripts.cohort_tool"):
+        result = count_drugs_exhaustive(large_cohort, "Lisinopril", "Amlodipine", driver=driver)
+
+    # Flagged, not blocked.
+    assert result["drug_a_count"] == len(large_cohort)
+    assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+
+def test_soft_alert_patient_threshold_is_the_smaller_of_the_two_defaults():
+    # spec.md LLM10: 500 patients or 25% of total population, whichever
+    # is smaller.
+    threshold = cohort_tool._soft_alert_patient_threshold()
+    assert threshold == min(
+        cohort_tool._SOFT_ALERT_MAX_PATIENTS,
+        round(cohort_tool._ASSUMED_TOTAL_PATIENT_POPULATION * cohort_tool._SOFT_ALERT_POPULATION_FRACTION),
+    )
+
+
+def test_slow_query_logs_a_runtime_soft_alert(monkeypatch, caplog):
+    # A genuinely slow call is exercised for real in
+    # test_a_genuinely_slow_query_surfaces_as_a_timeout_not_a_hang-style
+    # tests elsewhere in this repo (tests/test_vocabulary_check.py) - here
+    # the runtime-threshold *decision* itself is unit-tested directly via
+    # the logging helper, faking elapsed time rather than actually
+    # sleeping, since what's under test is the comparison logic, not
+    # Neo4j's own timing.
+    with caplog.at_level(logging.WARNING, logger="scripts.cohort_tool"):
+        cohort_tool._log_query_size_and_runtime("query_full_cohort", 3, cohort_tool._SOFT_ALERT_RUNTIME_SECONDS)
+
+    assert any("query_full_cohort" in r.message and "runtime" in r.message.lower() for r in caplog.records)
+
+
+def test_fast_query_does_not_log_a_runtime_soft_alert(caplog):
+    with caplog.at_level(logging.WARNING, logger="scripts.cohort_tool"):
+        cohort_tool._log_query_size_and_runtime(
+            "query_full_cohort", 3, cohort_tool._SOFT_ALERT_RUNTIME_SECONDS - 1
+        )
+
+    assert not any(r.levelno == logging.WARNING for r in caplog.records)
