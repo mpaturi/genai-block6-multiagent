@@ -48,7 +48,7 @@ from block5_agent.schemas import ClinicalAnswer
 
 from scripts import orchestrator
 from scripts.orchestrator import run_multi_agent, run_multi_agent_async
-from scripts.schemas import CohortResult, Citation
+from scripts.schemas import CohortResult, Citation, MultiAgentAnswer, ReconciliationResult
 from block5_agent.schemas import QuestionInput
 
 QUESTION = QuestionInput(
@@ -586,6 +586,187 @@ def test_reconcile_node_wraps_a_real_vocabulary_check_failure_and_degrades_grace
 
     assert result.mode == "both_failed"
     assert result.confidence == "low"
+
+
+def test_malformed_clinical_write_is_caught_logged_and_marked_suspect(caplog):
+    # clinical_agent_fn is compromised/buggy in a way run_agent's own
+    # documented contract never produces on its own: its first tuple
+    # element isn't a real ClinicalAnswer at all. Proves
+    # scripts/state_validation.py is actually wired into the real
+    # run_multi_agent_async path (see tests/test_state_validation.py for
+    # the isolated unit tests on validate_state_update itself), not just
+    # correct in isolation.
+    clinical_fn = _fn(("not a ClinicalAnswer object", True, _DUMMY_COST_INFO))
+    cohort_fn = _fn(_cohort_result(12, 8, 4))
+
+    with caplog.at_level(logging.WARNING, logger="scripts.state_validation"):
+        result = _run(clinical_fn, cohort_fn)
+
+    # The malformed value must never have been trusted into reconciliation -
+    # it's routed into the same degraded-mode bucket a real clinical_node
+    # exception already takes, not silently used as-is.
+    assert result.mode == "cohort_only_degraded"
+    assert result.total_patients == 12
+    assert any("clinical" in record.message for record in caplog.records)
+    assert any(record.levelno == logging.WARNING for record in caplog.records)
+
+
+def test_reconcile_error_answer_itself_raising_still_returns_a_valid_answer(monkeypatch):
+    # Forces the second, inner layer of defense (docs/tasks.md "Block 6 -
+    # state validation"): even if _reconcile_error_answer - the fallback
+    # for a reconcile_node failure - itself raises, run_multi_agent_async
+    # must still return a real MultiAgentAnswer, never let the exception
+    # escape. Reuses the same real vocabulary-check failure as the test
+    # above to reach reconcile_node_safe's except block in the first
+    # place, then breaks the fallback handler itself on top of that.
+    from scripts import vocabulary_check
+
+    monkeypatch.setattr(vocabulary_check, "_cached_vocabulary", None)
+    monkeypatch.setattr(vocabulary_check, "_cached_at", 0.0)
+
+    def _raising_get_driver():
+        raise RuntimeError("cannot connect to Neo4j")
+
+    monkeypatch.setattr(vocabulary_check, "get_driver", _raising_get_driver)
+
+    def _raising_reconcile_error_answer(question, exc):
+        raise RuntimeError("the fallback handler is broken too")
+
+    monkeypatch.setattr(orchestrator, "_reconcile_error_answer", _raising_reconcile_error_answer)
+
+    clinical_fn = _fn((_clinical_answer([], {}, outcome="nothing_found"), False, _DUMMY_COST_INFO))
+    cohort_fn = _fn(_cohort_result(12, 8, 4))
+
+    # If this exception ever escaped, the call below would fail with an
+    # uncaught RuntimeError rather than a normal assertion failure.
+    result = _run(clinical_fn, cohort_fn)
+
+    assert isinstance(result, MultiAgentAnswer)
+    assert result.mode == "both_failed"
+    assert result.confidence == "low"
+    # A fixed literal, no computed fields, per the task's own wording.
+    assert result.total_patients == 0
+    assert result.citations == []
+
+
+def test_reconcile_node_hang_past_the_timeout_still_returns_a_valid_answer(monkeypatch):
+    # The actual regression this fix targets (docs/tasks.md "Block 6 -
+    # state validation" follow-up): before this fix, reconcile_node_safe
+    # had no timeout of its own - a reconcile_node call that hung (e.g. a
+    # wedged Neo4j that stopped enforcing its own Query timeout) would
+    # hang run_multi_agent_async indefinitely, outside every ceiling this
+    # repo has. A fake sleep stands in for that hang here - a real,
+    # genuinely slow query is already covered elsewhere
+    # (tests/test_vocabulary_check.py's real-timeout test); this test's
+    # job is only to prove reconcile_node_safe's own wait_for wrapping
+    # actually fires and escalates, not to re-prove Neo4j's timeout
+    # mechanics.
+    #
+    # The fake sleeps far longer (3s) than the mocked timeout (0.2s) on
+    # purpose, and the elapsed-time assertion below is a real, self-
+    # verifying lower/upper bound - not just an observation made once by
+    # hand. If reconcile_node_safe's wait_for wrapping were ever removed
+    # in the future, this call would block for the full 3s and this
+    # assertion would fail outright, not just make the test run slower.
+    monkeypatch.setattr(orchestrator, "_RECONCILE_TIMEOUT_SECONDS", 0.2)
+
+    def _hanging_reconcile_node(state):
+        time.sleep(3)
+        return {"reconciliation": None, "final_answer": None}
+
+    monkeypatch.setattr(orchestrator, "reconcile_node", _hanging_reconcile_node)
+
+    clinical_fn = _fn(
+        (_clinical_answer([1, 2], {"Lisinopril": 1, "Amlodipine": 1}), True, _DUMMY_COST_INFO)
+    )
+    cohort_fn = _fn(_cohort_result(2, 1, 1))
+
+    started_at = time.monotonic()
+    result = _run(clinical_fn, cohort_fn)
+    elapsed = time.monotonic() - started_at
+
+    assert isinstance(result, MultiAgentAnswer)
+    assert result.mode == "both_failed"
+    # Bounded by the mocked _RECONCILE_TIMEOUT_SECONDS (0.2s), nowhere
+    # near the fake call's real 3s sleep.
+    assert elapsed < 2.0
+
+
+def test_final_answer_dropped_by_state_validation_is_escalated_to_the_fallback(monkeypatch):
+    # The actual regression this fix targets (docs/tasks.md "Block 6 -
+    # state validation" follow-up): validate_state_update silently drops
+    # a malformed field when no error_key is given (reconcile_node's own
+    # boundary) - correct for most fields, but final_answer isn't
+    # optional the way the others are. Before this fix, a dropped
+    # final_answer left reconcile_node_safe's returned dict without that
+    # key at all, so state's initial None stayed in place all the way to
+    # run_multi_agent_async's unguarded `final_answer.question` access -
+    # an AttributeError, not a graceful degradation. This is the exact
+    # scenario that must now crash *before* this fix and *not* crash
+    # after it.
+    def _fake_reconcile_node(state):
+        return {
+            "reconciliation": ReconciliationResult(
+                counts_match=True, authoritative_source="cohort", discrepancy_flag=False, notes="ok"
+            ),
+            "final_answer": "not a real MultiAgentAnswer",
+        }
+
+    monkeypatch.setattr(orchestrator, "reconcile_node", _fake_reconcile_node)
+
+    clinical_fn = _fn(
+        (_clinical_answer([1, 2], {"Lisinopril": 1, "Amlodipine": 1}), True, _DUMMY_COST_INFO)
+    )
+    cohort_fn = _fn(_cohort_result(2, 1, 1))
+
+    # If the dropped final_answer were ever silently accepted, this call
+    # would fail with an AttributeError (None has no attribute
+    # 'question') rather than a normal assertion failure.
+    result = _run(clinical_fn, cohort_fn)
+
+    assert isinstance(result, MultiAgentAnswer)
+    assert result.mode == "both_failed"
+
+
+def test_valid_final_answer_with_another_malformed_field_does_not_over_escalate(monkeypatch):
+    # Confirms the fix is scoped correctly: a malformed field *other than*
+    # final_answer must still just be dropped by validate_state_update,
+    # exactly as before this fix - not escalated into the reconciliation
+    # fallback unnecessarily, since a perfectly valid final_answer is
+    # still available to return as-is.
+    real_final_answer = MultiAgentAnswer(
+        question="Of patients with hypertension and SBP > 140, how many are on Lisinopril vs. Amlodipine?",
+        answer="2 patients matched.",
+        total_patients=2,
+        drug_a_count=1,
+        drug_b_count=1,
+        confidence="high",
+        mode="reconciled",
+        citations=[],
+        caveat=None,
+        discrepancy_flag=False,
+    )
+
+    def _fake_reconcile_node(state):
+        return {
+            "reconciliation": "not a real ReconciliationResult",
+            "final_answer": real_final_answer,
+        }
+
+    monkeypatch.setattr(orchestrator, "reconcile_node", _fake_reconcile_node)
+
+    clinical_fn = _fn(
+        (_clinical_answer([1, 2], {"Lisinopril": 1, "Amlodipine": 1}), True, _DUMMY_COST_INFO)
+    )
+    cohort_fn = _fn(_cohort_result(2, 1, 1))
+
+    result = _run(clinical_fn, cohort_fn)
+
+    # The real final_answer is returned as-is - not replaced by
+    # _reconcile_error_answer's generic both_failed fallback text/mode.
+    assert result.answer == "2 patients matched."
+    assert result.mode == "reconciled"
+    assert result.total_patients == 2
 
 
 def test_sync_entry_point_delegates_to_the_async_implementation():

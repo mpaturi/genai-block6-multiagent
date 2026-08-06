@@ -18,7 +18,9 @@ import sys
 import time
 from pathlib import Path
 
-from scripts.cohort_tool import LAB_PROPERTY_NAMES, NEO4J_DATABASE, get_driver
+from neo4j import Query
+
+from scripts.cohort_tool import GRAPH_QUERY_TIMEOUT, LAB_PROPERTY_NAMES, NEO4J_DATABASE, get_driver
 
 # data/eval/questions.json, resolved relative to this file rather than the
 # current working directory, so this script runs the same whether it's
@@ -64,9 +66,11 @@ def _fetch_known_vocabulary(*, driver=None) -> dict:
     """
     driver = driver if driver is not None else get_driver()
     with driver.session(database=NEO4J_DATABASE) as session:
-        condition_rows = session.run(_DISTINCT_CONDITION_NAMES_QUERY)
+        condition_rows = session.run(Query(_DISTINCT_CONDITION_NAMES_QUERY, timeout=GRAPH_QUERY_TIMEOUT))
         conditions = {row["condition_name"] for row in condition_rows}
-        property_key_rows = session.run(_DISTINCT_PATIENT_PROPERTY_KEYS_QUERY)
+        property_key_rows = session.run(
+            Query(_DISTINCT_PATIENT_PROPERTY_KEYS_QUERY, timeout=GRAPH_QUERY_TIMEOUT)
+        )
         real_property_keys = {row["property_key"] for row in property_key_rows}
 
     known_labs = {

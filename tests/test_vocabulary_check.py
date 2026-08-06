@@ -13,17 +13,23 @@ with no error anywhere.
 """
 import pytest
 
-from scripts import vocabulary_check
+from scripts import cohort_tool, vocabulary_check
 from scripts.vocabulary_check import get_known_vocabulary
 
 
 class _FakeSession:
-    def __init__(self, condition_names, property_keys):
+    def __init__(self, condition_names, property_keys, recorded_queries=None):
         self._condition_names = condition_names
         self._property_keys = property_keys
+        self._recorded_queries = recorded_queries
 
     def run(self, query):
-        if "condition_name" in query:
+        if self._recorded_queries is not None:
+            self._recorded_queries.append(query)
+        # Post-fix, query is always a neo4j.Query wrapper, not a bare
+        # string - .text is what carries the actual Cypher text now.
+        query_text = query.text
+        if "condition_name" in query_text:
             return [{"condition_name": name} for name in self._condition_names]
         return [{"property_key": key} for key in self._property_keys]
 
@@ -38,9 +44,13 @@ class _FakeDriver:
     def __init__(self, condition_names, property_keys):
         self._condition_names = condition_names
         self._property_keys = property_keys
+        # Populated with each Query object session.run() was called with,
+        # so tests can inspect e.g. .timeout without a live driver - same
+        # pattern as scripts/cohort_tool.py's own tests.
+        self.recorded_queries = []
 
     def session(self, database=None):
-        return _FakeSession(self._condition_names, self._property_keys)
+        return _FakeSession(self._condition_names, self._property_keys, recorded_queries=self.recorded_queries)
 
 
 @pytest.fixture(autouse=True)
@@ -104,3 +114,111 @@ def test_renamed_lab_property_is_flagged_as_unknown_not_silently_passed():
 
     assert "SBP" not in vocabulary["labs"]
     assert vocabulary["labs"] == {"BMI"}
+
+
+def test_both_queries_use_the_shared_graph_query_timeout():
+    # The regression this fix targets (docs/tasks.md "Block 6 - state
+    # validation"): unlike every other query in scripts/cohort_tool.py,
+    # _fetch_known_vocabulary()'s two session.run() calls had no timeout=
+    # at all, so a slow/blocked Neo4j call here could hang indefinitely
+    # instead of surfacing as an error. Both queries must now share
+    # cohort_tool.py's own GRAPH_QUERY_TIMEOUT constant, not a
+    # separately-defined value that could drift from it.
+    driver = _FakeDriver(
+        condition_names=["hypertension"],
+        property_keys=["person_id", "latest_sbp"],
+    )
+
+    get_known_vocabulary(driver=driver)
+
+    assert len(driver.recorded_queries) == 2
+    assert driver.recorded_queries[0].timeout == cohort_tool.GRAPH_QUERY_TIMEOUT
+    assert driver.recorded_queries[1].timeout == cohort_tool.GRAPH_QUERY_TIMEOUT
+
+
+def _real_driver_or_skip():
+    """A real Neo4j driver, not a fake - the one place this file breaks
+    its own "fake driver throughout" convention (this file's own
+    docstring), on purpose: the fake driver above can't prove a slow
+    server-side query actually gets cut off, only that the right
+    parameter was handed to it. Skips cleanly wherever a real, reachable
+    Neo4j instance isn't configured (e.g. a dev machine with no
+    NEO4J_PASSWORD set) - this repo's CI job already runs a disposable
+    neo4j:5.18-community service (.github/workflows/ci.yml) with these
+    same env vars, so it runs for real there.
+    """
+    import os
+
+    from neo4j import GraphDatabase
+
+    password = os.environ.get("NEO4J_PASSWORD")
+    if not password:
+        pytest.skip("NEO4J_PASSWORD not set - this test needs a real, reachable Neo4j instance")
+
+    uri = os.environ.get("NEO4J_URI", "bolt://localhost:7687")
+    user = os.environ.get("NEO4J_USER", "neo4j")
+    driver = GraphDatabase.driver(uri, auth=(user, password))
+    try:
+        driver.verify_connectivity()
+    except Exception as exc:
+        pytest.skip(f"real Neo4j not reachable at {uri}: {exc}")
+    return driver
+
+
+def test_a_genuinely_slow_query_surfaces_as_a_timeout_not_a_hang():
+    # Verified against actual behavior, not just the diff (same standard
+    # as the retry-backoff work): a real, unbounded 8000x8000-row UNWIND
+    # cross join against a real Neo4j server, timed by hand before
+    # writing this assertion - it reliably runs several seconds before
+    # completing on its own. With GRAPH_QUERY_TIMEOUT patched down to 1
+    # second, _fetch_known_vocabulary's first real session.run() call must
+    # surface a real driver-level timeout exception within a small,
+    # bounded window instead of ever letting it run to completion.
+    #
+    # pytest.raises(Exception) alone proves nothing - a query that fails
+    # instantly for an unrelated reason (bad Cypher, bad auth) satisfies
+    # it just as well as a real timeout does. Asserting on the specific
+    # exception the driver raises for a server-enforced timeout
+    # (neo4j.exceptions.ClientError with .code ==
+    # "Neo.ClientError.Transaction.TransactionTimedOutClientConfiguration"
+    # - the exact code classify_exception keys off in
+    # scripts/error_classification.py, verified directly against a live
+    # Neo4j 5.18-community server, not assumed) rules that out. An upper
+    # bound alone has the same gap (an instant unrelated failure also
+    # passes "elapsed < 8.0") - the lower bound below (elapsed must be at
+    # least half the mocked timeout) rules out a query that failed before
+    # the timeout ever had a chance to fire.
+    import time
+
+    from neo4j.exceptions import ClientError
+
+    driver = _real_driver_or_skip()
+    try:
+        monkeypatch_timeout = 1
+        original_timeout = vocabulary_check.GRAPH_QUERY_TIMEOUT
+        original_query = vocabulary_check._DISTINCT_CONDITION_NAMES_QUERY
+        vocabulary_check.GRAPH_QUERY_TIMEOUT = monkeypatch_timeout
+        vocabulary_check._DISTINCT_CONDITION_NAMES_QUERY = (
+            "UNWIND range(1, 8000) AS a UNWIND range(1, 8000) AS b RETURN count(*) AS condition_name"
+        )
+        try:
+            started_at = time.monotonic()
+            with pytest.raises(ClientError) as exc_info:
+                vocabulary_check._fetch_known_vocabulary(driver=driver)
+            elapsed = time.monotonic() - started_at
+        finally:
+            vocabulary_check.GRAPH_QUERY_TIMEOUT = original_timeout
+            vocabulary_check._DISTINCT_CONDITION_NAMES_QUERY = original_query
+
+        assert exc_info.value.code == "Neo.ClientError.Transaction.TransactionTimedOutClientConfiguration"
+        # Lower bound: must have taken at least half the mocked timeout -
+        # a query that failed for an unrelated reason before the timeout
+        # had any chance to fire would complete near-instantly instead.
+        assert elapsed > monkeypatch_timeout * 0.5
+        # Upper bound (real timeout enforcement isn't millisecond-
+        # precise), but nowhere near what letting the query actually
+        # finish would take - proves this terminates the call, rather
+        # than merely accepting a parameter that's never enforced.
+        assert elapsed < 8.0
+    finally:
+        driver.close()
